@@ -23,4 +23,3 @@ exclude = ["tests"]
 
 [tool.setuptools.package-data]
 where = ["."]
-"*" = ["*.caffemodel", "*.prototxt"]
