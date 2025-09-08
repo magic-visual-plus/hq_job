@@ -8,6 +8,9 @@ class COSCMDStorage(StorageBase):
         super().__init__()
 
     def download_file(self, remote_path: str, local_path: str):
+        if remote_path.startswith("cos://"):
+            remote_path = remote_path[len("cos://"):]
+            pass
         recursive = ""
         if remote_path.endswith("/"):
             recursive = "-r"
