@@ -19,6 +19,9 @@ class COSCMDStorage(StorageBase):
         pass
     
     def upload_file(self, local_path: str, remote_path: str):
+        if remote_path.startswith("cos://"):
+            remote_path = remote_path[len("cos://"):]
+            pass
         recursive = ""
         if os.path.isdir(local_path):
             recursive = "-r"

@@ -17,16 +17,14 @@ class JobEngineAutodl(JobEngine):
 
     def run(self, job: JobDescription) -> int:
         image_uuid = self.autodl_client.image_name2uuid(job.image)
-        env = job.to_env()
-        self.autodl_client.create_job_deployment(
+        job_uuid = self.autodl_client.create_job_deployment(
             name=job.name,
             image_uuid=image_uuid,
-            cmd=JobEngineAutodl.default_command(),
+            cmd=JobEngineAutodl.default_command(job),
             gpu_num=job.gpu_num,
-            env_vars=env,
         )
 
-        # run the job
+        return job_uuid
         pass
 
     def execute(self, job_id: int, command: str):
@@ -51,5 +49,5 @@ class JobEngineAutodl(JobEngine):
     def default_command(cls, job_desc: JobDescription) -> str:
         job_json = job_desc.to_json()
         job_code = base64.b64encode(job_json.encode('utf-8')).decode('utf-8')
-        cmd = f"python3 -m hq_job.scripts.job_worker_entry_autodl '{job_code}' > job.log 2>&1 ; coscmd upload job.log ml_backend/${{AutoDLContainerUUID}}/"
+        cmd = f"python3 -m hq_job.scripts.job_worker_entry_autodl '{job_code}' > job.log 2>&1 ; coscmd upload job.log ml_backend/autodl/${{AutoDLContainerUUID}}/"
         return cmd

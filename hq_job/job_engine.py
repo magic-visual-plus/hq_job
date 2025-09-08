@@ -35,11 +35,7 @@ class JobDescription:
         self.env_prefix = "HQJOB_"
         
     def to_dict(self, ) -> dict:
-        return {k: getattr(self, k) for k in [
-            'command', 'args', 'working_dir', 'output_dir', 'env',
-            'priority', 'description', 'job_id', 'start_time', 'end_time',
-            'status', 'exit_code', 'pid', 'error_message'
-        ]}
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
     
     def to_env(self, ) -> Dict[str, str]:
         env = dict()
