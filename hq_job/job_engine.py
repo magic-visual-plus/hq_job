@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 from . import common_utils
+import json
 
 
 class JobDescription:
@@ -29,7 +30,7 @@ class JobDescription:
 
         # used for autodl
         self.gpu_num = 1
-        self.image = "ml_backend_0.0.1"
+        self.image = "ml_backend:0.0.1"
 
         self.env_prefix = "HQJOB_"
         
@@ -48,6 +49,9 @@ class JobDescription:
             pass
         return env
     
+    def to_json(self, ) -> str:
+        return json.dumps(self.to_dict())
+    
     @classmethod
     def from_env(cls, env: Dict[str, str]) -> "JobDescription":
         data = dict()
@@ -60,6 +64,12 @@ class JobDescription:
                 data[key] = common_utils.from_str(v, target_type)
                 pass
             pass
+        return cls.from_dict(data)
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> "JobDescription":
+        import json
+        data = json.loads(json_str)
         return cls.from_dict(data)
     
     @classmethod
