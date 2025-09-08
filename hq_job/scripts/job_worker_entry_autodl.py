@@ -4,12 +4,13 @@ import os
 import loguru
 import subprocess
 import sys
+import base64
 
 logger = loguru.logger
 
 if __name__ == '__main__':
-    logger.info("env: " + str(os.environ))
-    job_desc = JobDescription.from_env(os.environ)
+    logger.info(f"Starting job worker with args: {sys.argv[1]}")
+    job_desc = JobDescription.from_json(base64.b64decode(sys.argv[1].encode('utf-8')).decode('utf-8'))
 
     logger.info(f"Job Description: {job_desc.__dict__}")
     working_dir = job_desc.working_dir

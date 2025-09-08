@@ -14,12 +14,10 @@ class TestJobWorkerEntryAutodl(unittest.TestCase):
             input_paths=[],
             output_dir="output"
         )
-        env_vars = job_desc.to_env()
-        os.environ.update(env_vars)
         if "AutoDLContainerUUID" not in os.environ:
             os.environ["AutoDLContainerUUID"] = "test_container"
             pass
-        retcd = os.system(JobEngineAutodl.default_command())
+        retcd = os.system(JobEngineAutodl.default_command(job_desc))
         self.assertEqual(retcd, 0)
         pass
 
