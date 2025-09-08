@@ -8,7 +8,7 @@ import sys
 logger = loguru.logger
 
 if __name__ == '__main__':
-
+    logger.info("env: " + str(os.environ))
     job_desc = JobDescription.from_env(os.environ)
 
     logger.info(f"Job Description: {job_desc.__dict__}")
@@ -35,11 +35,13 @@ if __name__ == '__main__':
         start_new_session=True
     )
     print('job output begin-----------------------------')
+    sys.stdout.flush()
     for line in process.stdout:
         print(line.decode('utf-8').rstrip())
         sys.stdout.flush()
         pass
     print('job output end-------------------------------')
+    sys.stdout.flush()
     return_code = process.wait()
     logger.info(f"Job completed with return code {return_code}")
     pass
