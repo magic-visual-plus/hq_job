@@ -52,6 +52,92 @@ class TestAutodlClient(unittest.TestCase):
             print(f"Blacklist Entry: {entry.created_at}, {entry.data_center}, {entry.machine_id}")
             pass
         pass
+
+    def test_create_job(self):
+        token = os.environ.get("AUTODL_TOKEN", "")
+        if not token:
+            self.skipTest("AUTODL_TOKEN not set in environment variables")
+            return
+        client = AutodlClient(token)
+        images = client.image_list()
+        if not images:
+            self.skipTest("No images available to create a job")
+            return
+        image = [img for img in images if "ml_backend" in img.image_name.lower()][0]
+        job_id = client.create_job_deployment(
+            name="test_job",
+            image_uuid=image.image_uuid,
+            replica_num=1,
+            parallelism_num=1,
+            gpu_name_set=["RTX 4090"],
+            cmd="echo Hello World",
+            gpu_num=1,
+        )
+        self.assertIsInstance(job_id, str)
+        print(f"Created Job ID: {job_id}")
+
+        deployments = client.deployment_list()
+        self.assertTrue(any(deployment.uuid == job_id for deployment in deployments))
+        print(f"Deployment {job_id} found in deployment list.")
+        pass
+
+    def test_list_deployments(self):
+        token = os.environ.get("AUTODL_TOKEN", "")
+        if not token:
+            self.skipTest("AUTODL_TOKEN not set in environment variables")
+            return
+        client = AutodlClient(token)
+        deployments = client.deployment_list()
+        self.assertIsInstance(deployments, list)
+        for deployment in deployments:
+            self.assertTrue(hasattr(deployment, 'uuid'))
+            self.assertTrue(hasattr(deployment, 'name'))
+            self.assertTrue(hasattr(deployment, 'status'))
+            print(f"Deployment UUID: {deployment.uuid}, Name: {deployment.name}, Status: {deployment.status}")
+            pass
+        pass
+
+    def test_list_containers(self):
+        token = os.environ.get("AUTODL_TOKEN", "")
+        if not token:
+            self.skipTest("AUTODL_TOKEN not set in environment variables")
+            return
+        client = AutodlClient(token)
+        deployments = client.deployment_list()
+        if not deployments:
+            self.skipTest("No deployments available to list containers")
+            return
+        deployment = deployments[0]
+        containers = client.container_list(deployment_uuid=deployment.uuid)
+        self.assertIsInstance(containers, list)
+        for container in containers:
+            self.assertTrue(hasattr(container, 'uuid'))
+            self.assertTrue(hasattr(container, 'status'))
+            self.assertTrue(hasattr(container, 'gpu_name'))
+            print(f"Container UUID: {container.uuid}, Status: {container.status}, GPU: {container.gpu_name}")
+            pass
+        pass
+
+    def test_list_container_events(self):
+        token = os.environ.get("AUTODL_TOKEN", "")
+        if not token:
+            self.skipTest("AUTODL_TOKEN not set in environment variables")
+            return
+        client = AutodlClient(token)
+        deployments = client.deployment_list()
+        if not deployments:
+            self.skipTest("No deployments available to list container events")
+            return
+        deployment = deployments[0]
+        events = client.container_event_list(deployment_uuid=deployment.uuid)
+        self.assertIsInstance(events, list)
+        for event in events:
+            self.assertTrue(hasattr(event, 'deployment_container_uuid'))
+            self.assertTrue(hasattr(event, 'status'))
+            self.assertTrue(hasattr(event, 'created_at'))
+            print(f"Event Container UUID: {event.deployment_container_uuid}, Status: {event.status}, Created At: {event.created_at}")
+            pass
+        pass
     pass
 
 
