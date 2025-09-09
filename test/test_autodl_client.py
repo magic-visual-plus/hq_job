@@ -129,7 +129,7 @@ class TestAutodlClient(unittest.TestCase):
             self.skipTest("No deployments available to list container events")
             return
         deployment = deployments[0]
-        events = client.container_event_list(deployment_uuid="d4486c9f39")
+        events = client.container_event_list(deployment_uuid=deployment.uuid)
         self.assertIsInstance(events, list)
         for event in events:
             self.assertTrue(hasattr(event, 'deployment_container_uuid'))

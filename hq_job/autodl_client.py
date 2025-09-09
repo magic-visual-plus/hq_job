@@ -138,9 +138,10 @@ class AutodlClient(object):
     def __init__(self, token):
         self.token = token
         self.host = "https://api.autodl.com"
-        self.default_region = "westDC3"
+        self.default_region = "chongqingDC1"
+        self.default_gpu_set = ["RTX 4090D"]
 
-    def _request(self, url, req, method=None):
+    def _request(self, url, req="", method=None):
         headers = {
             "Authorization": self.token,
             "Content-Type": "application/json"
@@ -166,7 +167,7 @@ class AutodlClient(object):
             )
         
         data = response.json()
-        logger.info(f"Response data: {data}")
+        # logger.info(f"Response data: {data}")
         code = data.get("code")
         if code != "Success":
             raise AutodlNetworkError(
@@ -174,70 +175,31 @@ class AutodlClient(object):
             )
         
         return data.get("data")
-        
-    def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, 
-                     params: Optional[Dict] = None) -> Dict:
-        """Send HTTP request"""
-        headers = {
-            "Authorization": self.token,
-            "Content-Type": "application/json"
-        }
-        url = f"{self.host}{endpoint}"
-        
-        try:
-            if method.upper() == "GET":
-                response = requests.get(url, headers=headers, params=params)
-            elif method.upper() == "POST":
-                response = requests.post(url, headers=headers, json=data)
-            elif method.upper() == "DELETE":
-                response = requests.delete(url, headers=headers, json=data)
-            elif method.upper() == "PUT":
-                response = requests.put(url, headers=headers, json=data)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
-            if response.status_code != 200:
-                raise AutodlNetworkError(
-                    message=f"http code not 200: {response.status_code} - {response.text}"
-                )
-            
-            data = response.json()
-            logger.info(f"Response data: {data}")
-            code = data.get("code")
-            if code != "Success":
-                raise AutodlNetworkError(
-                    message=f"return code not Success: {code} - {data.get('message')}"
-                )
-            return data
-            
-        except requests.exceptions.RequestException as e:
-            raise AutodlNetworkError(f"API request failed: {e}")
-        
-    def image_list(self, ) -> List[AutodlImage]:
-        url = "/api/v1/dev/image/private/list"
-        offset = 0
-        page_size = 10
+    
+    def get_pages(self, url, req, parser):
         page_index = 1
-        images = []
+        page_size = 10
+        items = []
         while True:
-            req = {
-                "offset": offset,
-                "page_size": page_size,
-                "page_index": page_index
-            }
-
-            logger.info(f"image list Request: {req}") 
+            req.update({
+                "page_index": page_index,
+                "page_size": page_size
+            })
             data = self._request(url, req)
-            
-            for image in data["list"]:
-                images.append(AutodlImage(**image))
-            
+            for item in data["list"]:
+                items.append(parser(item))
+                pass
             max_page = data["max_page"]
             if page_index >= max_page:
                 break
-            
             page_index += 1
+            pass
 
-        return images
+        return items
+        
+    def image_list(self, ) -> List[AutodlImage]:
+        url = "/api/v1/dev/image/private/list"
+        return self.get_pages(url, {}, lambda x: AutodlImage(**x))
 
     def gpu_stock_list(self, region=None) -> Dict[str, AutodlGpuStock]:
         url = "/api/v1/dev/machine/region/gpu_stock"
@@ -290,10 +252,10 @@ class AutodlClient(object):
                          reuse_container: bool = True, env_vars: Optional[Dict[str, str]] = None) -> str:
         """Create elastic deployment"""
         if dc_list is None:
-            dc_list = ["westDC2", "westDC3"]
+            dc_list = [self.default_region]
         
         if gpu_name_set is None:
-            gpu_name_set = ["RTX 4090"]
+            gpu_name_set = self.default_gpu_set
         
         data = {
             "name": name,
@@ -327,9 +289,10 @@ class AutodlClient(object):
         if env_vars:
             data["container_template"]["env_vars"] = env_vars
             
-        response = self._make_request("POST", "/api/v1/dev/deployment", data=data)
+        resp = self._request("/api/v1/dev/deployment", req=data)
         
-        deployment_uuid = response.get("data", {}).get("deployment_uuid")
+        deployment_uuid = resp.get("deployment_uuid")
+
         if not deployment_uuid:
             raise AutodlNetworkError("Deployment created successfully but no UUID returned")
         
@@ -365,7 +328,7 @@ class AutodlClient(object):
             env_vars=env_vars
         )
 
-    def create_job_deployment(self, name: str, image_uuid: str, replica_num: int = 4,
+    def create_job_deployment(self, name: str, image_uuid: str, replica_num: int = 1,
                             parallelism_num: int = 1, gpu_name_set: Optional[List[str]] = None,
                             gpu_num: int = 1, cuda_v_from: int = 113, cuda_v_to: int = 128,
                             cpu_num_from: int = 1, cpu_num_to: int = 100,
@@ -425,36 +388,41 @@ class AutodlClient(object):
             env_vars=env_vars
         )
 
-    def get_deployments(self) -> List[AutodlDeployment]:
+    def _parse_deployment(self, data) -> AutodlDeployment:
+        for key in ["region_sign", "dc_list", "gpu_name_set"]:
+            data[key] = data['template'][key]
+            pass
+        return AutodlDeployment(**data)
+    
+    def deployment_list(self, deployment_uuid=None) -> List[AutodlDeployment]:
         """Get deployment list"""
-        response = self._make_request("GET", "/api/v1/dev/deployment/list")
-        print(response)
-        deployments = []
-        for item in response.get("data", {}).get("list", []):
-            deployments.append(AutodlDeployment(**item))
-        return deployments
+        url = "/api/v1/dev/deployment/list"
+        if deployment_uuid is not None:
+            req = {
+                "deployment_uuid": deployment_uuid
+            }
+            pass
+        return self.get_pages(url, req, self._parse_deployment)
 
-    def query_container_events(self, deployment_uuid: str,
-            deployment_container_uuid: str = "",
-            page_index: int = 0,
-            page_size: int = 10) -> List[AutodlContainerEvent]:
+    def container_event_list(
+            self, deployment_uuid: str,
+            container_uuid: str = None) -> List[AutodlContainerEvent]:
         """Query container events"""
-        body = {
+        url = "/api/v1/dev/deployment/container/event/list"
+        req = {
             "deployment_uuid": deployment_uuid,
-            "deployment_container_uuid": deployment_container_uuid,
-            "page_index": page_index,
-            "page_size": page_size,
         }
-        response = self._make_request("POST", "/api/v1/dev/deployment/container/event/list", data=body)
-        events = []
-        for item in response.get("data", {}).get("list", []):
-            events.append(AutodlContainerEvent(**item))
-        return events
+        if container_uuid is not None:
+            req["deployment_container_uuid"] = container_uuid
+            pass
+        else:
+            req["deployment_container_uuid"] = ""
+            pass
 
-    def query_containers(self, deployment_uuid: str,
+        return self.get_pages(url, req, lambda x: AutodlContainerEvent(**x))
+
+    def container_list(self, deployment_uuid: str,
             deployment_container_uuid: str = "", 
-            page_index: int = 1, 
-            page_size: int = 100,
             date_from: str = "",
             date_to: str = "",
             gpu_name: str = "",
@@ -481,16 +449,9 @@ class AutodlClient(object):
             "price_to": price_to,
             "released": released,
             "status": status,
-            "page_index": page_index,
-            "page_size": page_size
         }
-        response = self._make_request("POST", "/api/v1/dev/deployment/container/list", data=body)
-        print(response['data']['list'])
-        containers = []
-        for item in response.get("data", {}).get("list", []):
-            containers.append(AutodlContainer(**item))
-            pass
-        return containers
+        url = "/api/v1/dev/deployment/container/list"
+        return self.get_pages(url, body, lambda x: AutodlContainer(**x))
 
     def stop_container(self, deployment_container_uuid: str,
             decrease_one_replica_num: bool = False,
@@ -581,3 +542,23 @@ class AutodlClient(object):
         for item in response.get("data", []):
             ddp_list.append(AutodlDdpOverview(**item))
         return ddp_list
+    
+    def image_name2uuid(self, image_name: str) -> Optional[str]:
+        images = self.image_list()
+        for image in images:
+            if image.image_name == image_name:
+                return image.image_uuid
+            pass
+        return None
+    
+    def deployment_get(self, deployment_uuid: str) -> Optional[AutodlDeployment]:
+        deployments = self.deployment_list(deployment_uuid=deployment_uuid)
+        if len(deployments) == 0:
+            return None
+        return deployments[0]
+    
+    def deployment_status(self, deployment_uuid: str) -> Optional[str]:
+        deployment = self.deployment_get(deployment_uuid)
+        if deployment is None:
+            return None
+        return deployment.status

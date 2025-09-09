@@ -33,8 +33,8 @@ class JobEngineAutodl(JobEngine):
     def stop(self, job_id: int):
         pass
 
-    def status(self, job_id: int):
-        pass
+    def status(self, job_id: str) -> str:
+        return self.autodl_client.deployment_status(job_id)
 
     def list(self,):
         pass
@@ -45,9 +45,23 @@ class JobEngineAutodl(JobEngine):
     def log(self, job_id: int):
         pass
 
+    def get_job_output_url(self, job_uuid: str) -> str:
+        events = self.autodl_client.container_event_list(job_uuid)
+        if not events:
+            return ""
+        last_event = events[0]
+        container_uuid = last_event.deployment_container_uuid
+        return JobEngineAutodl.default_output_path(container_uuid)
+    
     @classmethod
     def default_command(cls, job_desc: JobDescription) -> str:
         job_json = job_desc.to_json()
         job_code = base64.b64encode(job_json.encode('utf-8')).decode('utf-8')
-        cmd = f"python3 -m hq_job.scripts.job_worker_entry_autodl '{job_code}' > job.log 2>&1 ; coscmd upload job.log ml_backend/autodl/${{AutoDLContainerUUID}}/"
+        output_path = cls.default_output_path('${AutoDLContainerUUID}')
+        output_path = output_path[len("cos://"):]
+        cmd = f"python3 -m hq_job.scripts.job_worker_entry_autodl '{job_code}' > job.log 2>&1 ; coscmd upload job.log {output_path}"
         return cmd
+    
+    @classmethod
+    def default_output_path(cls, container_uuid: str) -> str:
+        return f"cos://ml_backend/autodl/output/{container_uuid}/"

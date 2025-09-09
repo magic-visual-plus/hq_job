@@ -1,5 +1,6 @@
 from hq_job.job_engine import JobDescription
 from hq_job import storage
+from hq_job.job_engine_autodl import JobEngineAutodl
 import os
 import loguru
 import subprocess
@@ -47,9 +48,13 @@ if __name__ == '__main__':
     logger.info(f"Job completed with return code {return_code}")
     pass
 
-    container_uuid = os.environ.get("AutoDLContainerUUID", "unknown_container")
+    container_uuid = os.environ.get("AutoDLContainerUUID")
+    if container_uuid is not None:
+        job_engine_cls = JobEngineAutodl
+        output_path = job_engine_cls.default_output_path(container_uuid)
+        pass
 
     # upload output files
     storage.upload_file(
-        output_dir + '/', f"cos://ml_backend/autodl/{container_uuid}/")
+        output_dir.rstrip('/'), output_path)
     pass
