@@ -36,6 +36,9 @@ if __name__ == '__main__':
         shell=True,
         start_new_session=True
     )
+    with open('pid', 'w') as f:
+        f.write(str(process.pid))
+        pass
     print('job output begin-----------------------------')
     sys.stdout.flush()
     for line in process.stdout:
