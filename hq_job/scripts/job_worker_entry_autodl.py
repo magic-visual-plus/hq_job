@@ -34,7 +34,7 @@ if __name__ == '__main__':
         stderr=subprocess.STDOUT,
         bufsize=0,
         shell=True,
-        start_new_session=True
+        start_new_session=False
     )
     with open('pid', 'w') as f:
         f.write(str(process.pid))
