@@ -2,6 +2,7 @@ import requests
 import pydantic
 from typing import List, Dict, Optional, Union
 import loguru
+from requests.adapters import HTTPAdapter, Retry
 
 
 logger = loguru.logger
@@ -147,6 +148,8 @@ class AutodlClient(object):
         self.host = "https://api.autodl.com"
         self.default_region = "chongqingDC1"
         self.default_gpu_set = ["RTX 4090D"]
+        self.retray = 5
+        pass
 
     def _request(self, url, req="", method=None):
         headers = {
@@ -162,10 +165,16 @@ class AutodlClient(object):
                 pass
             pass
 
+        session = requests.Session()
+        retries = Retry(total=self.retray, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+
         if method.lower() == "get":
-            response = requests.get(url, headers=headers)
+            response = session.get(url, headers=headers)
         else:
-            response = requests.post(url, json=req, headers=headers)
+            response = session.post(url, json=req, headers=headers)
             pass
 
         if response.status_code != 200:
