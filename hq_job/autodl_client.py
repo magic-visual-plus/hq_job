@@ -43,6 +43,13 @@ class AutodlContainerEvent(pydantic.BaseModel):
     status: str
     created_at: str
 
+
+class AutodlContainerInfo(pydantic.BaseModel):
+    ssh_command: str
+    root_password: str
+    service_6006_port_url: str
+    service_6008_port_url: str
+
 class AutodlContainer(pydantic.BaseModel):
     id: int
     machine_id: str
@@ -57,7 +64,7 @@ class AutodlContainer(pydantic.BaseModel):
     uuid: str
     version: str
     data_center: str
-    info: dict
+    info: AutodlContainerInfo
     started_at: Optional[str]
     stopped_at: Optional[str]
     created_at: str
@@ -249,7 +256,7 @@ class AutodlClient(object):
                          memory_size_from: int = 1, memory_size_to: int = 256,
                          dc_list: Optional[List[str]] = None, cmd: str = "sleep 100",
                          price_from: int = 10, price_to: int = 9000,
-                         reuse_container: bool = True, env_vars: Optional[Dict[str, str]] = None) -> str:
+                         reuse_container: bool = False, env_vars: Optional[Dict[str, str]] = None) -> str:
         """Create elastic deployment"""
         if dc_list is None:
             dc_list = [self.default_region]
@@ -335,7 +342,7 @@ class AutodlClient(object):
                             memory_size_from: int = 1, memory_size_to: int = 256,
                             dc_list: Optional[List[str]] = None, cmd: str = "sleep 10",
                             price_from: int = 10, price_to: int = 9000,
-                            reuse_container: bool = True, env_vars: Optional[Dict[str, str]] = None) -> str:
+                            reuse_container: bool = False, env_vars: Optional[Dict[str, str]] = None) -> str:
         """Create Job type deployment"""
         return self.create_deployment(
             name=name,
@@ -394,13 +401,19 @@ class AutodlClient(object):
             pass
         return AutodlDeployment(**data)
     
-    def deployment_list(self, deployment_uuid=None) -> List[AutodlDeployment]:
+    def deployment_list(self, deployment_uuid=None, name=None) -> List[AutodlDeployment]:
         """Get deployment list"""
         url = "/api/v1/dev/deployment/list"
+        req = dict()
         if deployment_uuid is not None:
-            req = {
+            req.update({
                 "deployment_uuid": deployment_uuid
-            }
+            })
+            pass
+        if name is not None:
+            req.update({
+                "name": name
+            })
             pass
         return self.get_pages(url, req, self._parse_deployment)
 

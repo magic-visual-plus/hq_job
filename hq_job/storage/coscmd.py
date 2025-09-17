@@ -36,7 +36,10 @@ class COSCMDStorage(StorageBase):
         if os.path.isdir(local_path):
             recursive = "-r"
             pass
-        os.system(f"coscmd upload {recursive} {local_path} {remote_path}")
+        retcd = os.system(f"coscmd upload {recursive} {local_path} {remote_path}")
+
+        if retcd != 0:
+            raise RuntimeError(f"coscmd upload {local_path} {remote_path} failed: {retcd}")
         pass
     pass
 
