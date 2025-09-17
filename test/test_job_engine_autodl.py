@@ -18,7 +18,7 @@ class TestJobEngineAutodl(unittest.TestCase):
         
         job_desc = JobDescription(
             command="python",
-            args=["-c", "\"print('Hello, AutoDL!')\"", "; cat test.txt ; echo 'Done.' > output/result.txt ; sleep 60"],
+            args=["-c", "\"print('Hello, AutoDL!')\"", "; cat test.txt ; echo 'Done.' > output/result.txt ; sleep 30"],
             input_paths=["cos://tmps/zouxiaochuan/test.txt"],
             output_dir="output"
         )
@@ -28,8 +28,12 @@ class TestJobEngineAutodl(unittest.TestCase):
 
         self.assertIsNotNone(job_uuid)
         
-        print("wait 5 seconds for container to start")
-        time.sleep(5)
+        while True:
+            if engine.is_any_container_running(job_uuid):
+                break
+            print("waiting for container to start...")
+            time.sleep(1)
+            pass
 
         with tempfile.TemporaryDirectory() as tmpdir:
             engine.download_job_output_from_container(job_uuid, job_desc, local_path=tmpdir)
