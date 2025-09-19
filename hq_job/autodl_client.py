@@ -152,6 +152,22 @@ class AutodlClient(object):
         self.retray = 5
         pass
 
+    def _request_retry(self, url, req="", method=None):
+        for i in range(self.retray):
+            try:
+                data = self._request(url, req, method)
+                break
+            except Exception as e:
+                logger.warning(f"Request timeout, retrying {i+1}/{self.retray}...")
+                if i == self.retray - 1:
+                    raise e
+                time.sleep(120)
+                continue
+            pass
+
+        return data
+        pass
+
     def _request(self, url, req="", method=None):
         headers = {
             "Authorization": self.token,
@@ -171,20 +187,12 @@ class AutodlClient(object):
         adapter = HTTPAdapter(max_retries=retries)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
-        for i in range(self.retray):
-            try:
-                if method.lower() == "get":
-                    response = session.get(url, headers=headers)
-                else:
-                    response = session.post(url, json=req, headers=headers)
-                    pass
-                break
-            except Exception as e:
-                logger.warning(f"Request timeout, retrying {i+1}/{self.retray}...")
-                if i == self.retray - 1:
-                    raise e
-                time.sleep(60)
-                continue
+        if method.lower() == "get":
+            response = session.get(url, headers=headers)
+        else:
+            response = session.post(url, json=req, headers=headers)
+            pass
+        pass
 
         if response.status_code != 200:
             raise AutodlNetworkError(
@@ -210,7 +218,7 @@ class AutodlClient(object):
                 "page_index": page_index,
                 "page_size": page_size
             })
-            data = self._request(url, req)
+            data = self._request_retry(url, req)
             for item in data["list"]:
                 items.append(parser(item))
                 pass
@@ -237,7 +245,7 @@ class AutodlClient(object):
             "region_sign": region
         }
         
-        data = self._request(url, req)
+        data = self._request_retry(url, req)
         
         stocks = dict()
 
@@ -256,7 +264,7 @@ class AutodlClient(object):
     
     def blacklist_list(self, ) -> List[AutodlBlacklist]:
         url = "/api/v1/dev/deployment/blacklist"
-        data = self._request(url, {})
+        data = self._request_retry(url, {})
         blacklist = []
         if data is None:
             return blacklist
@@ -314,7 +322,7 @@ class AutodlClient(object):
         if env_vars:
             data["container_template"]["env_vars"] = env_vars
             
-        resp = self._request("/api/v1/dev/deployment", req=data)
+        resp = self._request_retry("/api/v1/dev/deployment", req=data)
         
         deployment_uuid = resp.get("deployment_uuid")
 
