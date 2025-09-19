@@ -3,6 +3,7 @@ import pydantic
 from typing import List, Dict, Optional, Union
 import loguru
 from requests.adapters import HTTPAdapter, Retry
+import time
 
 
 logger = loguru.logger
@@ -170,12 +171,20 @@ class AutodlClient(object):
         adapter = HTTPAdapter(max_retries=retries)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
-
-        if method.lower() == "get":
-            response = session.get(url, headers=headers)
-        else:
-            response = session.post(url, json=req, headers=headers)
-            pass
+        for i in range(self.retray):
+            try:
+                if method.lower() == "get":
+                    response = session.get(url, headers=headers)
+                else:
+                    response = session.post(url, json=req, headers=headers)
+                    pass
+                break
+            except Exception as e:
+                logger.warning(f"Request timeout, retrying {i+1}/{self.retray}...")
+                if i == self.retray - 1:
+                    raise e
+                time.sleep(60)
+                continue
 
         if response.status_code != 200:
             raise AutodlNetworkError(
