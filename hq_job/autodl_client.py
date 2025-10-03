@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Union
 import loguru
 from requests.adapters import HTTPAdapter, Retry
 import time
+from datetime import datetime
 
 
 logger = loguru.logger
@@ -37,7 +38,12 @@ class AutodlDeployment(pydantic.BaseModel):
     region_sign: str
     dc_list: List[str]
     gpu_name_set: List[str]
-    created_at: str
+    created_at: datetime
+
+    class Config:
+        property_setters = {
+            "created_at": lambda v: datetime.strptime(v, "%Y-%m-%dT%H:%M:%S%z") if isinstance(v, str) else v,
+        }
 
 
 class AutodlContainerEvent(pydantic.BaseModel):
@@ -524,12 +530,12 @@ class AutodlClient(object):
         self._make_request("PUT", "/api/v1/dev/deployment/operate", data=data)
         return True
 
-    def delete_deployment(self, deployment_uuid: str) -> bool:
+    def deployment_delete(self, deployment_uuid: str) -> bool:
         """Delete deployment"""
         body = {
             "deployment_uuid": deployment_uuid,
         }
-        self._make_request("DELETE", "/api/v1/dev/deployment", data=body)
+        self._request("/api/v1/dev/deployment", data=body, method="DELETE")
         return True
 
     def set_scheduling_blacklist(self, deployment_uuid: str, 

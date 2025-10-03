@@ -14,7 +14,7 @@ class COSCMDStorage(StorageBase):
             pass
         recursive = ""
         if remote_path.endswith("/"):
-            recursive = "-r"
+            recursive = "-r -s"
             pass
         retcd = 255
         for itry in range(self.retry):

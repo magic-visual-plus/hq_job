@@ -6,8 +6,21 @@ import loguru
 import subprocess
 import sys
 import base64
+import time
 
 logger = loguru.logger
+
+def reinstall_numpy():
+    os.system("python3 -m pip uninstall -y numpy && rm -rf /root/miniconda3/lib/python3.12/site-packages/numpy*")
+
+    for i in range(5):
+        retcd = os.system("python3 -m pip install \"numpy<2.0.0\"")
+        if retcd == 0:
+            break
+        logger.warning("reinstall numpy failed, try again")
+        time.sleep(10)
+        pass
+    pass
 
 if __name__ == '__main__':
     logger.info(f"Starting job worker with args: {sys.argv[1]}")
@@ -18,6 +31,9 @@ if __name__ == '__main__':
     output_dir = os.path.join(working_dir, job_desc.output_dir)
     os.makedirs(working_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
+
+    logger.info("reinstalling numpy...")
+    reinstall_numpy()
 
     #download input files
     for input_path in job_desc.input_paths:
