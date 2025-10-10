@@ -2,10 +2,11 @@
 import os
 import unittest
 from hq_job.job_engine import JobDescription
-from hq_job.job_engine_autodl import JobEngineAutodl
+from hq_job.job_engine_autodl import JobEngineAutodl, AutodlDeployment
 from hq_job import storage
 import time
 import tempfile
+from datetime import datetime, timedelta
 
 
 class TestJobEngineAutodl(unittest.TestCase):
@@ -34,7 +35,7 @@ class TestJobEngineAutodl(unittest.TestCase):
             print("waiting for container to start...")
             time.sleep(1)
             pass
-
+        
         with tempfile.TemporaryDirectory() as tmpdir:
             engine.download_job_output_from_container(job_uuid, job_desc, local_path=tmpdir)
             self.assertTrue(os.path.exists(f'{tmpdir}/{job_desc.output_dir}/result.txt'))
@@ -104,6 +105,24 @@ class TestJobEngineAutodl(unittest.TestCase):
             engine.download_job_output_from_cos(job_uuid, local_path=tmpdir)
             local_output_dir = os.path.join(tmpdir, job_desc.output_dir)
             self.assertTrue(os.path.exists(local_output_dir))
+            pass
+        pass
+
+    def test_list(self):
+        token = os.environ.get("AUTODL_TOKEN", "")
+        if not token:
+            self.skipTest("AUTODL_TOKEN not set in environment variables")
+            return
+        engine = JobEngineAutodl(token=token)
+        jobs = engine.list()
+        self.assertIsInstance(jobs, list)
+        for job in jobs:
+            print(job.__dict__)
+            system_tz = datetime.now().astimezone().tzinfo
+            now = datetime.now(tz=system_tz)
+            print(now)
+            print(now - job.created_at)
+            self.assertIsInstance(job, AutodlDeployment)
             pass
         pass
 
