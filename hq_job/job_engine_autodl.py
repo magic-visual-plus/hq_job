@@ -60,7 +60,8 @@ class JobEngineAutodl(JobEngine):
     def list(self, name: str = None) -> List[AutodlDeployment]:
         return self.autodl_client.deployment_list(name=name)
 
-    def remove(self, job_id: int):
+    def remove(self, job_uuid: str):
+        return self.autodl_client.deployment_delete(job_uuid)
         pass
     
     def log(self, job_id: int):
@@ -113,7 +114,9 @@ class JobEngineAutodl(JobEngine):
         ssh_command = container.info.ssh_command
         password = container.info.root_password
         ssh_user, ssh_host, ssh_port = self.parse_ssh_command(ssh_command)
+        logger.info(f"download output from {ssh_user}@{ssh_host}:{output_path} to {local_path}")
         ssh_utils.download_file(output_path, local_path, host=ssh_host, username=ssh_user, password=password, port=int(ssh_port), ignores=ignores)
+        logger.info(f"download output finished")
         pass
 
     def download_job_output_from_cos(self, job_uuid: str, local_path: str):

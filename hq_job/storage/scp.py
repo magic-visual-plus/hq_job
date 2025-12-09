@@ -24,7 +24,9 @@ class SCPStorage(StorageBase):
             if self.key_file is not None:
                 connect_kwargs["key_filename"] = self.key_file
                 pass
-            with fabric.Connection(host=self.host, user=self.username, port=self.port, connect_kwargs=connect_kwargs) as conn:
+            with fabric.Connection(
+                host=self.host, user=self.username, port=self.port, connect_kwargs=connect_kwargs,
+                connect_timeout=5) as conn:
                 # pack dir
                 basename = os.path.basename(remote_path.rstrip("/"))
                 tmp_file = f"/tmp/{basename}.tar.gz"
