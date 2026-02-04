@@ -156,6 +156,7 @@ class AutodlClient(object):
         self.default_region = "chongqingDC1"
         self.default_gpu_set = ["RTX 4090D"]
         self.retray = 5
+        self.timeout = 60
         pass
 
     def _request_retry(self, url, req="", method=None):
@@ -194,9 +195,9 @@ class AutodlClient(object):
         session.mount('http://', adapter)
         session.mount('https://', adapter)
         if method.lower() == "get":
-            response = session.get(url, headers=headers)
+            response = session.get(url, headers=headers, timeout=self.timeout)
         else:
-            response = session.post(url, json=req, headers=headers)
+            response = session.post(url, json=req, headers=headers, timeout=self.timeout)
             pass
         pass
 
