@@ -58,7 +58,7 @@ if __name__ == '__main__':
     print('job output begin-----------------------------')
     sys.stdout.flush()
     for line in process.stdout:
-        print(line.decode('utf-8').rstrip())
+        print(line.decode('utf-8', errors='ignore').rstrip())
         sys.stdout.flush()
         pass
     print('job output end-------------------------------')
