@@ -162,6 +162,7 @@ class AutodlClient(object):
     def _request_retry(self, url, req="", method=None):
         for i in range(self.retray):
             try:
+                logger.info(f"Requesting {url}... req {req}, method {method}")
                 data = self._request(url, req, method)
                 break
             except Exception as e:

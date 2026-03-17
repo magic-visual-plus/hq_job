@@ -17,6 +17,9 @@ dependencies = [
     "pydantic",
     "loguru",
     "fabric",
+    "fastapi",
+    "requests",
+    "uvicorn[standard]",
 ]
 requires-python = ">=3.6"
 
