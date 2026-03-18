@@ -124,6 +124,8 @@ async def submit_job(
         image=req.image,
     )
     job_desc.gpu_num = req.gpu_num
+    job_desc.gpu_name_set = req.gpu_name_set
+    job_desc.region = req.region
 
     try:
         job_uuid = engine.run(job_desc)

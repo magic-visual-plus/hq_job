@@ -63,12 +63,13 @@ python -m hq_job.server
 ```
 
 ### 4. WEB访问
+http://localhost:9090/ui
 ![web ui](assets/web-ui.png)
 
 
 ## API 接口
 
-服务默认运行在 `http://localhost:8000`
+服务默认运行在 `http://localhost:9090`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -90,7 +91,7 @@ python -m hq_job.server
 | `AUTODL_TOKEN` | AutoDL 平台 Token | 是 |
 | `API_TOKEN` | API 认证 Token | 推荐 |
 | `SERVER_HOST` | 服务监听地址 | 否，默认 `0.0.0.0` |
-| `SERVER_PORT` | 服务端口 | 否，默认 `8000` |
+| `SERVER_PORT` | 服务端口 | 否，默认 `9090` |
 
 ## 项目结构
 
