@@ -244,6 +244,22 @@ class AutodlClient(object):
     def image_list(self, ) -> List[AutodlImage]:
         url = "/api/v1/dev/image/private/list"
         return self.get_pages(url, {}, lambda x: AutodlImage(**x))
+    
+    
+    def image_latest(self, prefix: str) -> Optional[AutodlImage]:
+        if not prefix.endswith(":"):
+            prefix += ":"
+            pass
+        images = self.image_list()
+        filtered_images = [img for img in images if img.image_name.startswith(prefix)]
+        if not filtered_images:
+            return None
+        # Sort by ID in descending order to get the latest image
+        versions = [img.image_name[len(prefix):] for img in filtered_images]
+        versions = [tuple(int(vv) for vv in v.split(".")) for v in versions]
+        filtered_images = [img for _, img in sorted(zip(versions, filtered_images), key=lambda x: x[0], reverse=True)]
+        return filtered_images[0]
+    
 
     def gpu_stock_list(self, region=None) -> Dict[str, AutodlGpuStock]:
         url = "/api/v1/dev/machine/region/gpu_stock"

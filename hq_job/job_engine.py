@@ -8,7 +8,7 @@ class JobDescription:
     def __init__(self, command: str = "python3", args: list = ["-c", "\"print('Hello World')\""],
                  working_dir: str = "working_dir", 
                  output_dir: str = "output", env: dict = dict(), priority: int = 0, 
-                 description: str = "", input_paths: list = [], name: str = "", image: str = "ml_backend:0.0.1"):
+                 description: str = "", input_paths: list = [], name: str = "", image: str = "ml_backend"):
         self.name = name  # 任务名称
         self.command = command  # 任务命令
         self.args = args  # 任务参数
