@@ -62,6 +62,10 @@ $env:API_TOKEN = "your_api_token"
 python -m hq_job.server
 ```
 
+### 4. WEB访问
+![web ui](assets/web-ui.png)
+
+
 ## API 接口
 
 服务默认运行在 `http://localhost:8000`

@@ -1,12 +1,13 @@
 import os
+import traceback
 from typing import Optional
 from contextlib import asynccontextmanager
 
 import loguru
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .job_engine import JobDescription
 from .job_engine_autodl import JobEngineAutodl
@@ -79,6 +80,23 @@ async def autodl_error_handler(request, exc: AutodlNetworkError):
     return ApiResponse(code=502, message=f"AutoDL error: {exc.message}", data=None).model_dump()
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理器，打印详细错误信息"""
+    error_detail = traceback.format_exc()
+    logger.error(f"Request: {request.method} {request.url}")
+    logger.error(f"Exception: {type(exc).__name__}: {exc}")
+    logger.error(f"Traceback:\n{error_detail}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": 500,
+            "message": str(exc),
+            "detail": error_detail
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -123,7 +141,7 @@ async def list_jobs(
     engine: JobEngineAutodl = Depends(get_engine),
 ):
     try:
-        deployments = engine.list(name=name)
+        deployments = engine.list(name=name, page_size=50, limit=100)
     except AutodlNetworkError as e:
         raise HTTPException(status_code=502, detail=f"AutoDL error: {e.message}")
 

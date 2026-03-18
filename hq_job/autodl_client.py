@@ -197,10 +197,12 @@ class AutodlClient(object):
         session.mount('https://', adapter)
         if method.lower() == "get":
             response = session.get(url, headers=headers, timeout=self.timeout)
+        elif method.lower() == "delete":
+            response = session.delete(url, headers=headers, json=req, timeout=self.timeout)
+        elif method.lower() == "put":
+            response = session.put(url, json=req, headers=headers, timeout=self.timeout)
         else:
             response = session.post(url, json=req, headers=headers, timeout=self.timeout)
-            pass
-        pass
 
         if response.status_code != 200:
             raise AutodlNetworkError(
@@ -217,9 +219,8 @@ class AutodlClient(object):
         
         return data.get("data")
     
-    def get_pages(self, url, req, parser):
+    def get_pages(self, url, req, parser, page_size=10, limit=None):
         page_index = 1
-        page_size = 10
         items = []
         while True:
             req.update({
@@ -229,6 +230,8 @@ class AutodlClient(object):
             data = self._request_retry(url, req)
             for item in data["list"]:
                 items.append(parser(item))
+                if limit is not None and len(items) >= limit:
+                    return items[:limit]
                 pass
             max_page = data["max_page"]
             if page_index >= max_page:
@@ -435,7 +438,7 @@ class AutodlClient(object):
             pass
         return AutodlDeployment(**data)
     
-    def deployment_list(self, deployment_uuid=None, name=None) -> List[AutodlDeployment]:
+    def deployment_list(self, deployment_uuid=None, name=None, page_size=10, limit=None) -> List[AutodlDeployment]:
         """Get deployment list"""
         url = "/api/v1/dev/deployment/list"
         req = dict()
@@ -449,7 +452,7 @@ class AutodlClient(object):
                 "name": name
             })
             pass
-        return self.get_pages(url, req, self._parse_deployment)
+        return self.get_pages(url, req, self._parse_deployment, page_size=page_size, limit=limit)
 
     def container_event_list(
             self, deployment_uuid: str,
@@ -520,7 +523,7 @@ class AutodlClient(object):
             "deployment_uuid": deployment_uuid,
             "replica_num": replicas
         }
-        self._make_request("PUT", "/api/v1/dev/deployment/replica_num", data=body)
+        self._request("/api/v1/dev/deployment/replica_num", req=body, method="PUT")
         return True
 
     def stop_deployment(self, deployment_uuid: str) -> bool:
@@ -529,7 +532,7 @@ class AutodlClient(object):
             "deployment_uuid": deployment_uuid, 
             "operate": "stop"
         }
-        self._make_request("PUT", "/api/v1/dev/deployment/operate", data=data)
+        self._request("/api/v1/dev/deployment/operate", req=data, method="PUT")
         return True
 
     def deployment_delete(self, deployment_uuid: str) -> bool:
@@ -537,7 +540,7 @@ class AutodlClient(object):
         body = {
             "deployment_uuid": deployment_uuid,
         }
-        self._request("/api/v1/dev/deployment", data=body, method="DELETE")
+        self._request("/api/v1/dev/deployment", req=body, method="DELETE")
         return True
 
     def set_scheduling_blacklist(self, deployment_uuid: str, 

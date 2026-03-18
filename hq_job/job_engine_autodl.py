@@ -12,6 +12,8 @@ from typing import List
 
 logger = loguru.logger
 
+DEFAULT_COS_PREFIX = "cos://ml_backend/autodl"
+
 class JobEngineAutodl(JobEngine):
     """
     Job Engine for AutoDL jobs.
@@ -57,8 +59,8 @@ class JobEngineAutodl(JobEngine):
     def status(self, job_id: str) -> str:
         return self.autodl_client.deployment_status(job_id)
 
-    def list(self, name: str = None) -> List[AutodlDeployment]:
-        return self.autodl_client.deployment_list(name=name)
+    def list(self, name: str = None, page_size=10, limit=None) -> List[AutodlDeployment]:
+        return self.autodl_client.deployment_list(name=name, page_size=page_size, limit=limit)
 
     def remove(self, job_uuid: str):
         return self.autodl_client.deployment_delete(job_uuid)
@@ -154,8 +156,10 @@ class JobEngineAutodl(JobEngine):
     
     @classmethod
     def default_output_path(cls, container_uuid: str) -> str:
-        return f"cos://ml_backend/autodl/output/{container_uuid}/"
+        cos_prefix = os.getenv("HQJOB_COS_PREFIX", DEFAULT_COS_PREFIX)
+        return f"{cos_prefix}/output/{container_uuid}/"
     
     @classmethod
     def default_input_path(cls, train_id: str) -> str:
-        return f"cos://ml_backend/autodl/input/{train_id}/"
+        cos_prefix = os.getenv("HQJOB_COS_PREFIX", DEFAULT_COS_PREFIX)
+        return f"{cos_prefix}/input/{train_id}/"
