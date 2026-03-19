@@ -158,6 +158,31 @@ HTML_PAGE = """<!DOCTYPE html>
           <label>GPU Num</label>
           <input type="number" id="f_gpu_num" value="1" min="1" max="8">
         </div>
+        <div>
+          <label>Region</label>
+          <select id="f_region">
+            <option value="">-- Auto --</option>
+          </select>
+        </div>
+        <div class="full">
+          <label>GPU Types (Ctrl+click to multi-select)</label>
+          <select id="f_gpu_types" multiple style="height:80px;">
+            <option value="RTX 4090" selected>RTX 4090</option>
+            <option value="RTX 4090D">RTX 4090D</option>
+            <option value="RTX 4080">RTX 4080</option>
+            <option value="RTX 3090">RTX 3090</option>
+            <option value="RTX 3080">RTX 3080</option>
+            <option value="RTX 3070">RTX 3070</option>
+            <option value="RTX 5090">RTX 5090</option>
+            <option value="RTX 5090 D">RTX 5090 D</option>
+            <option value="RTX PRO 6000">RTX PRO 6000</option>
+            <option value="V100">V100</option>
+            <option value="A100">A100</option>
+            <option value="H100">H100</option>
+            <option value="L20">L20</option>
+            <option value="L40">L40</option>
+          </select>
+        </div>
         <div class="full">
           <label>Args (comma separated)</label>
           <input type="text" id="f_args" placeholder='-c, "print(1)"'>
@@ -214,6 +239,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <script>
 let TOKEN = localStorage.getItem('hqjob_token') || '';
 let refreshTimer = null;
+let regionMap = {};  // sign -> name mapping
 
 function el(id) { return document.getElementById(id); }
 
@@ -268,13 +294,21 @@ async function loadRegions() {
   try {
     const r = await api('GET', '/api/v1/resources/regions');
     const sel = el('regionSelect');
+    const formSel = el('f_region');
     sel.innerHTML = '';
+    formSel.innerHTML = '<option value="">-- Auto --</option>';
+    regionMap = {};  // reset
     const regions = r.data || {};
     for (const [name, sign] of Object.entries(regions)) {
+      regionMap[sign] = name;  // build reverse mapping
       const opt = document.createElement('option');
       opt.value = sign; opt.textContent = name;
       if (sign === 'chongqingDC1') opt.selected = true;
       sel.appendChild(opt);
+      
+      const formOpt = document.createElement('option');
+      formOpt.value = sign; formOpt.textContent = name;
+      formSel.appendChild(formOpt);
     }
     loadGpuStock();
   } catch (e) { toast('Load regions failed: ' + e.message, 'error'); }
@@ -338,6 +372,10 @@ async function submitJob() {
   const inputRaw = el('f_input_paths').value.trim();
   const input_paths = inputRaw ? inputRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
+  const gpuSelect = el('f_gpu_types');
+  const gpu_name_set = Array.from(gpuSelect.selectedOptions).map(o => o.value);
+  const region = el('f_region').value;
+
   const body = {
     name,
     command: el('f_command').value.trim() || 'python3',
@@ -350,6 +388,8 @@ async function submitJob() {
     input_paths,
     image: el('f_image').value,
     gpu_num: parseInt(el('f_gpu_num').value) || 1,
+    gpu_name_set,
+    region,
   };
 
   el('submitBtn').disabled = true;
@@ -373,11 +413,13 @@ async function loadJobs() {
     let html = '';
     for (const j of jobs) {
       const t = j.created_at ? new Date(j.created_at).toLocaleString() : '';
+      const autodlUrl = 'https://www.autodl.com/deploy/details/' + j.uuid + '/' + j.name;
+      const regionNames = (j.dc_list || []).map(dc => regionMap[dc] || dc).join(', ');
       html += '<tr>'
-        + '<td title="' + j.uuid + '">' + j.name + '</td>'
+        + '<td title="' + j.uuid + '"><a href="' + autodlUrl + '" target="_blank" style="color:var(--primary);text-decoration:none;">' + j.name + '</a></td>'
         + '<td><span class="badge ' + badgeClass(j.status) + '">' + j.status + '</span></td>'
         + '<td>' + j.deployment_type + '</td>'
-        + '<td>' + j.region_sign + '</td>'
+        + '<td>' + regionNames + '</td>'
         + '<td>' + (j.gpu_name_set || []).join(', ') + '</td>'
         + '<td>' + t + '</td>'
         + '<td class="op-btns">'

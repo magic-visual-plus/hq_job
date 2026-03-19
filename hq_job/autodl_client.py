@@ -145,7 +145,7 @@ class AutoDLConstants:
     # GPU types
     GPU_TYPES = [
         "RTX 4090", "RTX 4080", "RTX 3090", "RTX 3080", "RTX 3070",
-        "V100", "A100", "H100", "L20", "L40"
+        "V100", "A100", "H100", "L20", "L40", "RTX PRO 6000", "RTX 5090", "RTX 5090 D", "RTX 4090D"
     ]
 
 
@@ -162,7 +162,7 @@ class AutodlClient(object):
     def _request_retry(self, url, req="", method=None):
         for i in range(self.retray):
             try:
-                logger.info(f"Requesting {url}... req {req}, method {method}")
+                # logger.info(f"Requesting {url}... req {req}, method {method}")
                 data = self._request(url, req, method)
                 break
             except Exception as e:
@@ -314,7 +314,7 @@ class AutodlClient(object):
         if dc_list is None:
             dc_list = [self.default_region]
         
-        if gpu_name_set is None:
+        if gpu_name_set is None or len(gpu_name_set) == 0:
             gpu_name_set = self.default_gpu_set
         
         data = {
@@ -390,7 +390,7 @@ class AutodlClient(object):
 
     def create_job_deployment(self, name: str, image_uuid: str, replica_num: int = 1,
                             parallelism_num: int = 1, gpu_name_set: Optional[List[str]] = None,
-                            gpu_num: int = 1, cuda_v_from: int = 113, cuda_v_to: int = 128,
+                            gpu_num: int = 1, cuda_v_from: int = 113, cuda_v_to: int = 130,
                             cpu_num_from: int = 1, cpu_num_to: int = 100,
                             memory_size_from: int = 1, memory_size_to: int = 256,
                             dc_list: Optional[List[str]] = None, cmd: str = "sleep 10",

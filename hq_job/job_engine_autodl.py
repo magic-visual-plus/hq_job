@@ -27,18 +27,27 @@ class JobEngineAutodl(JobEngine):
 
     def run(self, job: JobDescription) -> str:
         image_uuid = self.autodl_client.image_name2uuid(job.image)
+        
+        # 处理区域参数
+        dc_list = None
+        if job.region:
+            dc_list = [job.region]
+        
+        # 处理 GPU 型号参数
+        gpu_name_set = job.gpu_name_set if job.gpu_name_set else None
         if image_uuid is None:
             image = self.autodl_client.image_latest(job.image)
             if image is None:
                 raise RuntimeError(f"can't find image {job.image} in AutoDL")
             image_uuid = image.image_uuid
-            pass
         
         job_uuid = self.autodl_client.create_job_deployment(
             name=job.name,
             image_uuid=image_uuid,
             cmd=JobEngineAutodl.default_command(job),
             gpu_num=job.gpu_num,
+            gpu_name_set=gpu_name_set,
+            dc_list=dc_list,
         )
 
         return job_uuid

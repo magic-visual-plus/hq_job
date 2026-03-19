@@ -31,6 +31,8 @@ class JobDescription:
         # used for autodl
         self.gpu_num = 1
         self.image = image
+        self.gpu_name_set = []  # GPU 型号列表
+        self.region = ""  # 区域
 
         self.env_prefix = "HQJOB_"
         

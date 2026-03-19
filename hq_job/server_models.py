@@ -14,6 +14,8 @@ class JobSubmitRequest(BaseModel):
     input_paths: List[str] = []
     image: str = "ml_backend:0.0.1"
     gpu_num: int = 1
+    gpu_name_set: List[str] = []  # GPU 型号列表
+    region: str = ""  # 区域
 
 
 class JobInfo(BaseModel):

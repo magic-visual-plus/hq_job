@@ -19,7 +19,7 @@ Keep it all in one file - the service is simple enough (5 endpoints + health che
 | `AUTODL_TOKEN` | Yes | AutoDL API token for `JobEngineAutodl` |
 | `API_TOKEN` | Yes | Token to protect the HTTP service |
 | `SERVER_HOST` | No | Listen address, default `0.0.0.0` |
-| `SERVER_PORT` | No | Listen port, default `8000` |
+| `SERVER_PORT` | No | Listen port, default `9090` |
 
 ## API Endpoints
 
