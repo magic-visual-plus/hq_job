@@ -5,7 +5,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY hq_job/ hq_job/
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . -i https://mirrors.aliyun.com/pypi/simple/
 
 EXPOSE 8000
 
