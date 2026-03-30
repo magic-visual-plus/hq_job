@@ -53,6 +53,8 @@ if __name__ == '__main__':
     merged_env = os.environ.copy()
     if job_desc.env:
         merged_env.update(job_desc.env)
+        
+    merged_env['HQJOB_WORK_DIR'] = working_dir
     
     logger.info("Running command: {} with env: {}".format(job_desc.command, merged_env))
     process = subprocess.Popen(

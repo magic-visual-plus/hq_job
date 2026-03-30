@@ -10,6 +10,7 @@ LOG_FILE="${SCRIPT_DIR}/hq_job.log"
 # 环境变量配置
 export AUTODL_TOKEN="eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjY3MzAyNCwidXVpZCI6IjUxNWEyNzg5ZDgwMzdlZmEiLCJpc19hZG1pbiI6ZmFsc2UsImJhY2tzdGFnZV9yb2xlIjoiIiwiaXNfc3VwZXJfYWRtaW4iOmZhbHNlLCJzdWJfbmFtZSI6IiIsInRlbmFudCI6ImF1dG9kbCIsInVwayI6IiJ9.Z7ehfhzgIStE3_7RTiinhlkYxGA2i1yoPZbWce9DFiQt4iTuenJWJP4V0iT45VGCWTcS43Lw4iZKwYD7APxfzw"
 export API_TOKEN="foresee_hq_job"
+export HQJOB_COS_PREFIX="cos://autodl"
 
 start() {
     if [ -f "$PID_FILE" ]; then
