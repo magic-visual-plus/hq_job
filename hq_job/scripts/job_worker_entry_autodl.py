@@ -47,6 +47,7 @@ if __name__ == '__main__':
     if job_desc.env:
         merged_env.update(job_desc.env)
     
+    logger.info("Running command: {} with env: {}".format(job_desc.command, merged_env))
     process = subprocess.Popen(
         args=job_desc.command + " " + " ".join(job_desc.args),
         cwd=working_dir,
