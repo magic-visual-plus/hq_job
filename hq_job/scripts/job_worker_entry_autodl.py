@@ -1,5 +1,6 @@
 from hq_job.job_engine import JobDescription
 from hq_job import storage
+from hq_job import file_utils
 from hq_job.job_engine_autodl import JobEngineAutodl
 import os
 import loguru
@@ -39,7 +40,13 @@ if __name__ == '__main__':
     for input_path in job_desc.input_paths:
         logger.info(f"Downloading input file: {input_path}")
         storage.download_file(input_path, os.path.join(working_dir, os.path.basename(input_path)))
-        pass
+
+    # unpack input files (解压 zip/tar 文件)
+    for input_path in job_desc.input_paths:
+        file_path = os.path.join(working_dir, os.path.basename(input_path))
+        extract_dir = file_utils.extract_archive(file_path, delete_after=True)
+        if extract_dir:
+            logger.info(f"Unpacked {file_path} to {extract_dir}")
 
     # run the command
     # 将 job_desc.env 合并到环境变量中
