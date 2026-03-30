@@ -251,6 +251,7 @@ test_results/
 
 # Log files
 *.log
+*.pid
 logs/
 
 # Output files
