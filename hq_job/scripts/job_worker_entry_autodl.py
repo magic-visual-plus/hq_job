@@ -42,10 +42,16 @@ if __name__ == '__main__':
         pass
 
     # run the command
+    # 将 job_desc.env 合并到环境变量中
+    merged_env = os.environ.copy()
+    if job_desc.env:
+        merged_env.update(job_desc.env)
+    
+    logger.info("Running command: {} with env: {}".format(job_desc.command, merged_env))
     process = subprocess.Popen(
         args=job_desc.command + " " + " ".join(job_desc.args),
         cwd=working_dir,
-        env=os.environ,
+        env=merged_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         bufsize=0,
