@@ -165,8 +165,10 @@ class JobEngineAutodl(JobEngine):
     def default_command(cls, job_desc: JobDescription) -> str:
         job_json = job_desc.to_json()
         job_code = base64.b64encode(job_json.encode('utf-8')).decode('utf-8')
+        logger.info(f"job json: {job_json}, job code {job_code}")
         output_path = cls.default_output_path('${AutoDLContainerUUID}')
         output_path = output_path[len("cos://"):]
+        logger.info(f"output path: {output_path}")
         cmd = f"python3 -m hq_job.scripts.job_worker_entry_autodl '{job_code}' > job.log 2>&1 ; coscmd upload job.log {output_path}"
         return cmd
     
