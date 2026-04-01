@@ -67,7 +67,7 @@ class JobEngineAutodl(JobEngine):
                 ssh_command = container.info.ssh_command
                 password = container.info.root_password
                 ssh_user, ssh_host, ssh_port = self.parse_ssh_command(ssh_command)
-                ssh_utils.execute_command("pkill -P `cat pid`", host=ssh_host, username=ssh_user, password=password, port=int(ssh_port))
+                ssh_utils.execute_command("pkill python", host=ssh_host, username=ssh_user, password=password, port=int(ssh_port))
                 pass
             pass
         pass

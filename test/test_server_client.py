@@ -7,7 +7,7 @@ from hq_job.server_models import JobInfo
 class TestHQJobClient(unittest.TestCase):
 
     def setUp(self):
-        self.client = HQJobClient(base_url="http://localhost:9090", token="test")
+        self.client = HQJobClient(base_url="http://10.8.0.54:9090", token="foresee_hq_job")
         
     def test_list_jobs(self):
         jobs = self.client.list_jobs()
