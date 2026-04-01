@@ -12,7 +12,7 @@ from typing import List
 
 logger = loguru.logger
 
-DEFAULT_COS_PREFIX = "cos://ml_backend/autodl"
+DEFAULT_COS_PREFIX = "cos://autodl"
 
 class JobEngineAutodl(JobEngine):
     """
