@@ -82,7 +82,7 @@ if __name__ == '__main__':
     logger.info(f"Job completed with return code {return_code}")
     pass
 
-    container_uuid = os.environ.get("AutoDLContainerUUID")
+    container_uuid = os.environ.get("AutoDLDeploymentUUID")
     if container_uuid is not None:
         job_engine_cls = JobEngineAutodl
         output_path = job_engine_cls.default_output_path(container_uuid)
