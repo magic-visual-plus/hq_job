@@ -96,5 +96,15 @@ def main():
         f.write(f"exit code: {return_code}\n")
         f.write(f"end time: {datetime.now().isoformat()}\n")
 
+    jobs_dir = os.path.dirname(job_dir)
+    try:
+        _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _repo_root not in sys.path:
+            sys.path.insert(0, _repo_root)
+        from hq_job.job_engine_local import promote_next_queued_job
+        promote_next_queued_job(jobs_dir)
+    except Exception:
+        pass
+
 if __name__ == '__main__':
     main()

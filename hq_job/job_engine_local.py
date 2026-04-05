@@ -11,6 +11,82 @@ from typing import Dict, List, Optional
 
 from hq_job.job_engine import JobEngine, JobDescription
 
+# 占用「本地执行槽」的状态：有任一任务处于这些状态时，新提交进入 queued
+_ACTIVE_STATUSES = frozenset({"pending", "running", "postprocessing"})
+
+
+def _load_all_jobs_from_disk(jobs_dir: str) -> Dict[int, Dict]:
+    """从磁盘扫描 job_* 目录，读取各任务 status.json（不依赖引擎内存）。"""
+    jobs: Dict[int, Dict] = {}
+    if not os.path.exists(jobs_dir):
+        return jobs
+    for name in os.listdir(jobs_dir):
+        if not name.startswith("job_"):
+            continue
+        try:
+            job_id = int(name.split("_")[1])
+        except Exception:
+            continue
+        status_file = os.path.join(jobs_dir, name, "status.json")
+        if not os.path.exists(status_file):
+            continue
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                job_info = json.load(f)
+                job_info["id"] = job_id
+                jobs[job_id] = job_info
+        except Exception:
+            continue
+    return jobs
+
+
+def _has_active_job_on_disk(jobs_dir: str) -> bool:
+    jobs = _load_all_jobs_from_disk(jobs_dir)
+    return any(j.get("status") in _ACTIVE_STATUSES for j in jobs.values())
+
+
+def _spawn_local_worker(jobs_dir: str, job_id: int) -> None:
+    """为已写入磁盘、状态为 pending 的任务启动 worker 子进程。"""
+    job_dir = os.path.join(jobs_dir, f"job_{job_id}")
+    worker_script = os.path.join(os.path.dirname(__file__), "scripts", "job_worker_entry.py")
+    python_exe = sys.executable
+    if sys.platform == "win32":
+        cmd = f'start /B "" "{python_exe}" "{worker_script}" "{job_dir}" "{job_id}"'
+        os.system(cmd)
+    else:
+        cmd = f'nohup "{python_exe}" "{worker_script}" "{job_dir}" "{job_id}" > /dev/null 2>&1 &'
+        os.system(cmd)
+
+
+def promote_next_queued_job(jobs_dir: str) -> Optional[int]:
+    """
+    当前没有占用执行槽的任务时，将队列中最早的一个 queued 任务改为 pending 并启动 worker。
+    用于任务正常结束、被停止、或进程重启后的队列恢复。
+    返回启动的任务 id；未启动则返回 None。
+    """
+    jobs_dir = os.path.abspath(jobs_dir)
+    if _has_active_job_on_disk(jobs_dir):
+        return None
+    jobs = _load_all_jobs_from_disk(jobs_dir)
+    queued_ids = sorted(jid for jid, j in jobs.items() if j.get("status") == "queued")
+    if not queued_ids:
+        return None
+    next_id = queued_ids[0]
+    status_file = os.path.join(jobs_dir, f"job_{next_id}", "status.json")
+    try:
+        with open(status_file, "r", encoding="utf-8") as f:
+            job_info = json.load(f)
+        job_info["status"] = "pending"
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump(job_info, f, ensure_ascii=False, indent=2)
+    except Exception:
+        return None
+    _spawn_local_worker(jobs_dir, next_id)
+    logging.getLogger(__name__).info(
+        "promoted queued job %s to pending and started worker", next_id
+    )
+    return next_id
+
 
 class JobEngineLocal(JobEngine):
     
@@ -37,6 +113,14 @@ class JobEngineLocal(JobEngine):
         
         self._load_jobs()
         self._set_next_job_id()
+        # 重启后若无运行中任务但有 queued，补启动下一条
+        promote_next_queued_job(self.jobs_dir)
+
+    def _has_active_local_slot_occupied(self) -> bool:
+        """是否存在占用本地单槽的任务（pending / running / postprocessing）。"""
+        return any(
+            info.get("status") in _ACTIVE_STATUSES for info in self._jobs.values()
+        )
 
     def _load_jobs(self):
         """scan jobs_dir, load job status from individual status files"""
@@ -105,6 +189,8 @@ class JobEngineLocal(JobEngine):
 
     def run(self, job: JobDescription) -> int:
         """run job"""
+        self._load_jobs()
+        self._set_next_job_id()
         job_id = self.next_job_id
         self.next_job_id += 1
         job.job_id = job_id
@@ -112,23 +198,22 @@ class JobEngineLocal(JobEngine):
         os.makedirs(job_dir, exist_ok=True)
         # save job info
         job_info = job.to_dict()
-        job_info['status'] = 'pending'
+        if self._has_active_local_slot_occupied():
+            job_info["status"] = "queued"
+            self.logger.info(
+                f"job {job_id} queued (local slot busy: another task is pending/running/postprocessing)"
+            )
+        else:
+            job_info["status"] = "pending"
         job_info['start_time'] = datetime.now().isoformat()
         self._jobs[job_id] = job_info
         self._save_job_status(job_id)
 
-        worker_script = os.path.join(os.path.dirname(__file__), 'scripts', 'job_worker_entry.py')
-        python_exe = sys.executable 
-        self.logger.info(f"python_exe: {python_exe}")
-        self.logger.info(f"worker_script: {worker_script}")
-        self.logger.info(f"job_dir: {job_dir}")
-        self.logger.info(f"job_id: {job_id}")
-        if sys.platform == 'win32':
-            cmd = f'start /B "" "{python_exe}" "{worker_script}" "{job_dir}" "{job_id}"'
-            os.system(cmd)
-        else:
-            cmd = f'nohup "{python_exe}" "{worker_script}" "{job_dir}" "{job_id}" > /dev/null 2>&1 &'
-            os.system(cmd)
+        if job_info["status"] == "pending":
+            self.logger.info(f"python_exe: {sys.executable}")
+            self.logger.info(f"job_dir: {job_dir}")
+            self.logger.info(f"job_id: {job_id} starting worker")
+            _spawn_local_worker(self.jobs_dir, job_id)
 
         return job_id
 
@@ -215,6 +300,7 @@ class JobEngineLocal(JobEngine):
             with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(f"\njob {job_id} stopped by user\n")
                 f.write(f"stop time: {self._jobs[job_id]['end_time']}\n")
+            promote_next_queued_job(self.jobs_dir)
             return True
         except Exception as e:
             self.logger.error(f"stop job {job_id} error: {e}")
@@ -254,8 +340,11 @@ class JobEngineLocal(JobEngine):
         if job_id not in self._jobs:
             raise ValueError(f"job {job_id} not found")
         # stop job if running
-        if self._jobs[job_id]['status'] in ['running', 'postprocessing']:
+        st = self._jobs[job_id]['status']
+        if st in ['running', 'postprocessing']:
             raise ValueError(f"job {job_id} is running or postprocessing")
+        if st == 'pending':
+            raise ValueError(f"job {job_id} is pending (worker starting)")
         # remove output dir
         job_info = self._jobs[job_id]
         output_dir = job_info.get('output_dir')
