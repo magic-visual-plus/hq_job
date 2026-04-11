@@ -119,6 +119,23 @@ HTML_PAGE = """<!DOCTYPE html>
   #sshTerminal { height: 480px; }
   .btn-ssh { background: transparent; border: 1px solid var(--success); color: var(--success); }
   .btn-ssh:hover { background: var(--success); color: #fff; }
+
+  /* Monitor button */
+  .btn-monitor { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+  .btn-monitor:hover, .btn-monitor.active { background: var(--primary); color: #fff; }
+
+  /* Monitor expanded row */
+  .monitor-row td { background: #f8fafc !important; padding: 12px 16px; }
+  .monitor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+  @media (max-width: 700px) { .monitor-grid { grid-template-columns: 1fr; } }
+  .monitor-section-title { font-size: 12px; font-weight: 600; color: var(--text-light); margin-bottom: 4px; }
+  .progress-block { margin-bottom: 6px; }
+  .progress-label { font-size: 12px; color: var(--text-light); margin-bottom: 2px; display: flex;
+                    justify-content: space-between; align-items: center; }
+  .progress-bar-wrap { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; background: var(--primary); }
+  .progress-bar-fill.critical { background: var(--danger); }
+  .progress-bar-fill.warn { background: var(--warning); }
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
@@ -433,6 +450,9 @@ async function submitJob() {
   el('submitBtn').disabled = false;
 }
 
+// --- Resource Monitor state ---
+const monitorStates = {};  // uuid -> { timer, isOpen }
+
 // --- Jobs List ---
 async function loadJobs() {
   const tbody = el('jobsBody');
@@ -446,7 +466,8 @@ async function loadJobs() {
       const autodlUrl = 'https://www.autodl.com/deploy/details/' + j.uuid + '/' + j.name;
       const regionNames = (j.dc_list || []).map(dc => regionMap[dc] || dc).join(', ');
       const isRunning = (j.status || '').toLowerCase().includes('running') || (j.status || '').toLowerCase() === 'active';
-      html += '<tr>'
+      const monActive = monitorStates[j.uuid] ? ' active' : '';
+      html += '<tr data-uuid="' + j.uuid + '">'
         + '<td title="' + j.uuid + '"><a href="' + autodlUrl + '" target="_blank" style="color:var(--primary);text-decoration:none;">' + j.name + '</a></td>'
         + '<td><span class="badge ' + badgeClass(j.status) + '">' + j.status + '</span></td>'
         + '<td>' + j.deployment_type + '</td>'
@@ -455,11 +476,28 @@ async function loadJobs() {
         + '<td>' + t + '</td>'
         + '<td class="op-btns">'
         + (isRunning ? '<button class="btn btn-sm btn-ssh" onclick="openSsh(\\'' + j.uuid + '\\',\\'' + j.name + '\\')">SSH</button>' : '')
+        + (isRunning ? '<button id="monitor-btn-' + j.uuid + '" class="btn btn-sm btn-monitor' + monActive + '" onclick="toggleMonitor(\\'' + j.uuid + '\\')">Monitor</button>' : '')
         + '<button class="btn btn-outline btn-sm" onclick="stopJob(\\'' + j.uuid + '\\')">Stop</button>'
         + '<button class="btn btn-danger btn-sm" onclick="deleteJob(\\'' + j.uuid + '\\')">Delete</button>'
         + '</td></tr>';
     }
     tbody.innerHTML = html;
+    // Re-insert open monitor rows after refresh
+    for (const uuid of Object.keys(monitorStates)) {
+      const taskRow = tbody.querySelector('tr[data-uuid="' + uuid + '"]');
+      if (taskRow) {
+        const mtr = document.createElement('tr');
+        mtr.className = 'monitor-row';
+        mtr.id = 'monitor-row-' + uuid;
+        mtr.innerHTML = '<td colspan="7"><div class="monitor-panel" id="monitor-panel-' + uuid + '"><div class="loading">Loading...</div></div></td>';
+        taskRow.insertAdjacentElement('afterend', mtr);
+        fetchMonitor(uuid);
+      } else {
+        // Task row gone (stopped/deleted), clean up
+        clearInterval(monitorStates[uuid].timer);
+        delete monitorStates[uuid];
+      }
+    }
   } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="loading">Error: ' + e.message + '</td></tr>'; }
 }
 
@@ -481,11 +519,114 @@ async function deleteJob(uuid) {
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
 }
 
+// --- Resource Monitor ---
+
+function toggleMonitor(uuid) {
+  if (monitorStates[uuid]) {
+    // Close
+    clearInterval(monitorStates[uuid].timer);
+    delete monitorStates[uuid];
+    const row = document.getElementById('monitor-row-' + uuid);
+    if (row) row.remove();
+    const btn = document.getElementById('monitor-btn-' + uuid);
+    if (btn) btn.classList.remove('active');
+  } else {
+    // Open
+    const taskRow = document.querySelector('tr[data-uuid="' + uuid + '"]');
+    if (!taskRow) return;
+    const mtr = document.createElement('tr');
+    mtr.className = 'monitor-row';
+    mtr.id = 'monitor-row-' + uuid;
+    mtr.innerHTML = '<td colspan="7"><div class="monitor-panel" id="monitor-panel-' + uuid + '"><div class="loading">Loading...</div></div></td>';
+    taskRow.insertAdjacentElement('afterend', mtr);
+    const btn = document.getElementById('monitor-btn-' + uuid);
+    if (btn) btn.classList.add('active');
+    fetchMonitor(uuid);
+    const timer = setInterval(() => fetchMonitor(uuid), 15000);
+    monitorStates[uuid] = { timer: timer, isOpen: true };
+  }
+}
+
+async function fetchMonitor(uuid) {
+  const panel = document.getElementById('monitor-panel-' + uuid);
+  if (!panel) return;
+  try {
+    const r = await api('GET', '/api/v1/jobs/' + uuid + '/monitor');
+    renderMonitorData(uuid, r.data);
+  } catch (e) {
+    if (e.message && e.message.includes('404')) {
+      // Container stopped
+      if (monitorStates[uuid]) {
+        clearInterval(monitorStates[uuid].timer);
+        delete monitorStates[uuid];
+      }
+      const row = document.getElementById('monitor-row-' + uuid);
+      if (row) row.remove();
+      const btn = document.getElementById('monitor-btn-' + uuid);
+      if (btn) btn.classList.remove('active');
+    } else {
+      panel.innerHTML = '<div class="loading" style="color:var(--danger)">Error: ' + e.message + '</div>';
+    }
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes == null) return 'N/A';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes < 1099511627776) return (bytes / 1073741824).toFixed(1) + ' GB';
+  return (bytes / 1099511627776).toFixed(1) + ' TB';
+}
+
+function progressBar(pct, critical) {
+  var cls = 'progress-bar-fill';
+  if (critical) cls += ' critical';
+  else if (pct > 75) cls += ' warn';
+  return '<div class="progress-bar-wrap"><div class="' + cls + '" style="width:' + Math.min(pct, 100) + '%"></div></div>';
+}
+
+function renderMonitorData(uuid, d) {
+  var panel = document.getElementById('monitor-panel-' + uuid);
+  if (!panel) return;
+  var h = '<div class="monitor-grid">';
+
+  // CPU
+  if (d.cpu) {
+    h += '<div class="progress-block"><div class="progress-label"><span>CPU</span><span>' + d.cpu.usage_pct + '%</span></div>' + progressBar(d.cpu.usage_pct, false) + '</div>';
+  }
+
+  // Memory
+  if (d.memory) {
+    h += '<div class="progress-block"><div class="progress-label"><span>RAM</span><span>' + formatBytes(d.memory.used_bytes) + ' / ' + formatBytes(d.memory.total_bytes) + ' (' + d.memory.usage_pct + '%)</span></div>' + progressBar(d.memory.usage_pct, false) + '</div>';
+  }
+
+  // GPU
+  if (d.gpu && d.gpu.length > 0) {
+    for (var g of d.gpu) {
+      h += '<div class="progress-block"><div class="progress-label"><span>GPU' + g.index + ' ' + g.name + ' ' + g.temp_c + '&#176;C</span><span>' + g.util_pct + '%</span></div>' + progressBar(g.util_pct, false) + '</div>';
+      h += '<div class="progress-block"><div class="progress-label"><span>VRAM GPU' + g.index + '</span><span>' + g.mem_used_mib + ' / ' + g.mem_total_mib + ' MiB (' + g.mem_pct + '%)</span></div>' + progressBar(g.mem_pct, false) + '</div>';
+    }
+  }
+
+  // Disk
+  if (d.disks && d.disks.length > 0) {
+    for (var dk of d.disks) {
+      var diskColor = dk.is_critical ? ' style="color:var(--danger);font-weight:600"' : '';
+      h += '<div class="progress-block"><div class="progress-label"><span' + diskColor + '>Disk ' + dk.mountpoint + '</span><span' + diskColor + '>' + formatBytes(dk.used_bytes) + ' / ' + formatBytes(dk.total_bytes) + ' (' + dk.usage_pct + '%)</span></div>' + progressBar(dk.usage_pct, dk.is_critical) + '</div>';
+    }
+  }
+
+  h += '</div>';
+  panel.innerHTML = h;
+}
+
 // --- SSH Terminal ---
 let sshTerm = null;
 let sshWs = null;
 let sshFitAddon = null;
 let sshResizeTimer = null;
+let sshCurrentUuid = null;
 
 async function openSsh(uuid, name) {
   try {
@@ -494,6 +635,13 @@ async function openSsh(uuid, name) {
     toast('SSH not available: ' + e.message, 'error');
     return;
   }
+
+  // Pause monitor polling for this task to avoid SSH resource contention
+  if (monitorStates[uuid]) {
+    clearInterval(monitorStates[uuid].timer);
+    monitorStates[uuid].timer = null;
+  }
+  sshCurrentUuid = uuid;
 
   // Show modal
   el('sshModal').style.display = 'flex';
@@ -555,6 +703,12 @@ function closeSshModal() {
   if (sshWs) { try { sshWs.close(); } catch(e){} sshWs = null; }
   if (sshTerm) { try { sshTerm.dispose(); } catch(e){} sshTerm = null; }
   sshFitAddon = null;
+  // Resume monitor polling if it was open for this task
+  if (sshCurrentUuid && monitorStates[sshCurrentUuid] && !monitorStates[sshCurrentUuid].timer) {
+    fetchMonitor(sshCurrentUuid);
+    monitorStates[sshCurrentUuid].timer = setInterval(() => fetchMonitor(sshCurrentUuid), 15000);
+  }
+  sshCurrentUuid = null;
 }
 
 // --- Init ---

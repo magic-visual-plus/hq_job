@@ -1,6 +1,8 @@
 import os
+import re
 import asyncio
 import json
+import time
 import traceback
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -271,6 +273,155 @@ def _parse_ssh_command(ssh_command: str):
     port = int(parts[2])
     user, host = parts[3].split('@')
     return user, host, port
+
+
+_MONITOR_CMD = (
+    'echo "===CPU===" && top -bn1 | grep "%Cpu" ; '
+    'echo "===GPU===" && nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits 2>/dev/null ; '
+    'echo "===MEM===" && free -b | grep Mem ; '
+    'echo "===DISK===" && df -B1 /root/autodl-tmp/ 2>/dev/null | tail -1 ; df -B1 / | tail -1'
+)
+
+
+def _run_monitor_command(host: str, port: int, user: str, password: str) -> str:
+    """SSH into container and run monitoring command, return raw output."""
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(host, port=port, username=user, password=password, timeout=10,
+                    banner_timeout=10, auth_timeout=10)
+        _, stdout, stderr = ssh.exec_command(_MONITOR_CMD, timeout=15)
+        return stdout.read().decode("utf-8", errors="replace")
+    finally:
+        ssh.close()
+
+
+# Monitor data cache: {job_uuid: {"data": dict, "ts": float}}
+_monitor_cache: dict = {}
+_MONITOR_CACHE_TTL = 10  # seconds
+
+
+def _parse_monitor_output(raw: str) -> dict:
+    """Parse combined monitoring command output into structured data."""
+    sections = {}
+    current = None
+    for line in raw.splitlines():
+        if line.startswith("===") and line.endswith("==="):
+            current = line.strip("=")
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+
+    result = {"cpu": None, "gpu": [], "memory": None, "disks": []}
+
+    # --- CPU ---
+    cpu_lines = sections.get("CPU", [])
+    for line in cpu_lines:
+        m = re.search(r"([\d.,]+)\s*id", line)
+        if m:
+            idle = float(m.group(1).replace(",", "."))
+            result["cpu"] = {"usage_pct": round(100.0 - idle, 1)}
+            break
+
+    # --- GPU ---
+    gpu_lines = sections.get("GPU", [])
+    for line in gpu_lines:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 6:
+            try:
+                mem_used = float(parts[3])
+                mem_total = float(parts[4])
+                result["gpu"].append({
+                    "index": int(parts[0]),
+                    "name": parts[1],
+                    "util_pct": float(parts[2]),
+                    "mem_used_mib": mem_used,
+                    "mem_total_mib": mem_total,
+                    "mem_pct": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0,
+                    "temp_c": int(float(parts[5])),
+                })
+            except (ValueError, ZeroDivisionError):
+                pass
+
+    # --- Memory ---
+    mem_lines = sections.get("MEM", [])
+    for line in mem_lines:
+        parts = line.split()
+        if len(parts) >= 7:
+            try:
+                total = int(parts[1])
+                available = int(parts[6])
+                used = total - available
+                result["memory"] = {
+                    "total_bytes": total,
+                    "used_bytes": used,
+                    "usage_pct": round(used / total * 100, 1) if total > 0 else 0,
+                }
+            except (ValueError, IndexError):
+                pass
+            break
+
+    # --- Disk ---
+    disk_lines = sections.get("DISK", [])
+    seen_mounts = set()
+    for line in disk_lines:
+        parts = line.split()
+        if len(parts) >= 6:
+            try:
+                mount = parts[5]
+                if mount in seen_mounts:
+                    continue
+                seen_mounts.add(mount)
+                total = int(parts[1])
+                used = int(parts[2])
+                pct = round(used / total * 100, 1) if total > 0 else 0
+                result["disks"].append({
+                    "mountpoint": mount,
+                    "total_bytes": total,
+                    "used_bytes": used,
+                    "usage_pct": pct,
+                    "is_critical": pct > 90,
+                })
+            except (ValueError, IndexError):
+                pass
+
+    return result
+
+
+@app.get("/api/v1/jobs/{job_uuid}/monitor", dependencies=[Depends(verify_token)])
+async def get_job_monitor(
+    job_uuid: str,
+    engine: JobEngineAutodl = Depends(get_engine),
+):
+    # Return cached data if fresh enough
+    cached = _monitor_cache.get(job_uuid)
+    if cached and (time.monotonic() - cached["ts"]) < _MONITOR_CACHE_TTL:
+        return ApiResponse(data=cached["data"])
+
+    try:
+        containers = engine.autodl_client.container_list(job_uuid, status=["running"])
+    except AutodlNetworkError as e:
+        raise HTTPException(status_code=502, detail=f"AutoDL error: {e.message}")
+
+    if not containers:
+        _monitor_cache.pop(job_uuid, None)
+        raise HTTPException(status_code=404, detail="No running containers found")
+
+    container = containers[0]
+    user, host, port = _parse_ssh_command(container.info.ssh_command)
+    password = container.info.root_password
+
+    loop = asyncio.get_event_loop()
+    try:
+        raw = await loop.run_in_executor(
+            None, lambda: _run_monitor_command(host, port, user, password)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"SSH monitor failed: {e}")
+
+    data = _parse_monitor_output(raw)
+    _monitor_cache[job_uuid] = {"data": data, "ts": time.monotonic()}
+    return ApiResponse(data=data)
 
 
 @app.get("/api/v1/jobs/{job_uuid}/ssh", dependencies=[Depends(verify_token)])
