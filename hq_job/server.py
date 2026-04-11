@@ -1,11 +1,14 @@
 import os
+import asyncio
+import json
 import traceback
 from typing import Optional
 from contextlib import asynccontextmanager
 
 import loguru
+import paramiko
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -254,6 +257,140 @@ async def list_images(
 @app.get("/ui", response_class=HTMLResponse)
 async def ui_page():
     return HTML_PAGE
+
+
+# ---------------------------------------------------------------------------
+# SSH routes
+# ---------------------------------------------------------------------------
+
+def _parse_ssh_command(ssh_command: str):
+    """Parse 'ssh -p port user@host' into (user, host, port)."""
+    parts = ssh_command.split()
+    if len(parts) != 4:
+        raise ValueError(f"Invalid SSH command format: {ssh_command}")
+    port = int(parts[2])
+    user, host = parts[3].split('@')
+    return user, host, port
+
+
+@app.get("/api/v1/jobs/{job_uuid}/ssh", dependencies=[Depends(verify_token)])
+async def get_ssh_info(
+    job_uuid: str,
+    engine: JobEngineAutodl = Depends(get_engine),
+):
+    try:
+        containers = engine.autodl_client.container_list(job_uuid, status=["running"])
+    except AutodlNetworkError as e:
+        raise HTTPException(status_code=502, detail=f"AutoDL error: {e.message}")
+
+    if not containers:
+        raise HTTPException(status_code=404, detail="No running containers found")
+
+    container = containers[0]
+    user, host, port = _parse_ssh_command(container.info.ssh_command)
+    return ApiResponse(data={
+        "container_uuid": container.uuid,
+        "host": host,
+        "port": port,
+        "username": user,
+    })
+
+
+@app.websocket("/api/v1/jobs/{job_uuid}/ssh/ws")
+async def ssh_terminal(job_uuid: str, ws: WebSocket, token: str = Query("")):
+    # Auth
+    if not API_TOKEN or token != API_TOKEN:
+        await ws.close(code=1008)
+        return
+
+    await ws.accept()
+
+    # Get container SSH info
+    engine = get_engine()
+    try:
+        containers = engine.autodl_client.container_list(job_uuid, status=["running"])
+    except Exception as e:
+        await ws.send_text(f"\r\nError: {e}\r\n")
+        await ws.close()
+        return
+
+    if not containers:
+        await ws.send_text("\r\nNo running containers found.\r\n")
+        await ws.close()
+        return
+
+    container = containers[0]
+    user, host, port = _parse_ssh_command(container.info.ssh_command)
+    password = container.info.root_password
+
+    # Establish SSH connection via paramiko in executor
+    loop = asyncio.get_event_loop()
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: ssh_client.connect(host, port=port, username=user, password=password, timeout=10)
+        )
+        channel = await loop.run_in_executor(
+            None,
+            lambda: ssh_client.invoke_shell(term='xterm-256color', width=80, height=24)
+        )
+    except Exception as e:
+        await ws.send_text(f"\r\nSSH connection failed: {e}\r\n")
+        await ws.close()
+        ssh_client.close()
+        return
+
+    async def ssh_to_ws():
+        """Read from SSH channel and send to WebSocket."""
+        try:
+            while True:
+                data = await loop.run_in_executor(None, lambda: channel.recv(4096))
+                if not data:
+                    break
+                await ws.send_bytes(data)
+        except Exception:
+            pass
+
+    async def ws_to_ssh():
+        """Read from WebSocket and send to SSH channel."""
+        try:
+            while True:
+                data = await ws.receive_text()
+                # Check for control frame (resize)
+                try:
+                    msg = json.loads(data)
+                    if isinstance(msg, dict) and msg.get("type") == "resize":
+                        cols = int(msg.get("cols", 80))
+                        rows = int(msg.get("rows", 24))
+                        channel.resize_pty(width=cols, height=rows)
+                        continue
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                channel.send(data)
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+
+    try:
+        task_ssh = asyncio.create_task(ssh_to_ws())
+        task_ws = asyncio.create_task(ws_to_ssh())
+        done, pending = await asyncio.wait(
+            [task_ssh, task_ws], return_when=asyncio.FIRST_COMPLETED
+        )
+        for t in pending:
+            t.cancel()
+    finally:
+        try:
+            channel.close()
+        except Exception:
+            pass
+        try:
+            ssh_client.close()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

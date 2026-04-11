@@ -104,7 +104,25 @@ HTML_PAGE = """<!DOCTYPE html>
 
   /* Loading */
   .loading { color: var(--text-light); font-size: 13px; padding: 12px 0; text-align: center; }
+
+  /* SSH modal */
+  .ssh-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200;
+                       display: flex; align-items: center; justify-content: center; }
+  .ssh-modal { background: #1a1a2e; border-radius: var(--radius); width: 900px; max-width: 95vw;
+               overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .ssh-modal-header { display: flex; justify-content: space-between; align-items: center;
+                      padding: 8px 16px; background: #16213e; color: #e2e8f0; font-size: 14px; }
+  .ssh-modal-header button { background: none; border: none; color: #e2e8f0; font-size: 20px;
+                             cursor: pointer; padding: 0 4px; line-height: 1; }
+  .ssh-modal-header button:hover { color: #fff; }
+  .ssh-modal-body { padding: 4px; background: #000; }
+  #sshTerminal { height: 480px; }
+  .btn-ssh { background: transparent; border: 1px solid var(--success); color: var(--success); }
+  .btn-ssh:hover { background: var(--success); color: #fff; }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
 </head>
 <body>
 
@@ -230,6 +248,18 @@ HTML_PAGE = """<!DOCTYPE html>
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="sshModal" class="ssh-modal-overlay" style="display:none">
+  <div class="ssh-modal">
+    <div class="ssh-modal-header">
+      <span id="sshModalTitle">SSH Terminal</span>
+      <button onclick="closeSshModal()">&times;</button>
+    </div>
+    <div class="ssh-modal-body">
+      <div id="sshTerminal"></div>
     </div>
   </div>
 </div>
@@ -415,6 +445,7 @@ async function loadJobs() {
       const t = j.created_at ? new Date(j.created_at).toLocaleString() : '';
       const autodlUrl = 'https://www.autodl.com/deploy/details/' + j.uuid + '/' + j.name;
       const regionNames = (j.dc_list || []).map(dc => regionMap[dc] || dc).join(', ');
+      const isRunning = (j.status || '').toLowerCase().includes('running') || (j.status || '').toLowerCase() === 'active';
       html += '<tr>'
         + '<td title="' + j.uuid + '"><a href="' + autodlUrl + '" target="_blank" style="color:var(--primary);text-decoration:none;">' + j.name + '</a></td>'
         + '<td><span class="badge ' + badgeClass(j.status) + '">' + j.status + '</span></td>'
@@ -423,6 +454,7 @@ async function loadJobs() {
         + '<td>' + (j.gpu_name_set || []).join(', ') + '</td>'
         + '<td>' + t + '</td>'
         + '<td class="op-btns">'
+        + (isRunning ? '<button class="btn btn-sm btn-ssh" onclick="openSsh(\\'' + j.uuid + '\\',\\'' + j.name + '\\')">SSH</button>' : '')
         + '<button class="btn btn-outline btn-sm" onclick="stopJob(\\'' + j.uuid + '\\')">Stop</button>'
         + '<button class="btn btn-danger btn-sm" onclick="deleteJob(\\'' + j.uuid + '\\')">Delete</button>'
         + '</td></tr>';
@@ -449,6 +481,82 @@ async function deleteJob(uuid) {
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
 }
 
+// --- SSH Terminal ---
+let sshTerm = null;
+let sshWs = null;
+let sshFitAddon = null;
+let sshResizeTimer = null;
+
+async function openSsh(uuid, name) {
+  try {
+    await api('GET', '/api/v1/jobs/' + uuid + '/ssh');
+  } catch (e) {
+    toast('SSH not available: ' + e.message, 'error');
+    return;
+  }
+
+  // Show modal
+  el('sshModal').style.display = 'flex';
+  el('sshModalTitle').textContent = 'SSH: ' + name;
+
+  // Cleanup previous session
+  if (sshWs) { try { sshWs.close(); } catch(e){} sshWs = null; }
+  if (sshTerm) { try { sshTerm.dispose(); } catch(e){} sshTerm = null; }
+  el('sshTerminal').innerHTML = '';
+
+  // Create terminal
+  var term = new Terminal({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: 'Consolas, "Courier New", monospace',
+    theme: { background: '#000000' }
+  });
+  var fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(el('sshTerminal'));
+  requestAnimationFrame(function() { fitAddon.fit(); });
+
+  sshTerm = term;
+  sshFitAddon = fitAddon;
+
+  // WebSocket
+  var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  var wsUrl = proto + '://' + location.host + '/api/v1/jobs/' + uuid + '/ssh/ws?token=' + encodeURIComponent(TOKEN);
+  var ws = new WebSocket(wsUrl);
+  ws.binaryType = 'arraybuffer';
+  sshWs = ws;
+
+  ws.onopen = function() {
+    ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+  };
+  ws.onmessage = function(ev) {
+    term.write(new Uint8Array(ev.data));
+  };
+  ws.onclose = function() {
+    term.write('\\r\\n\\x1b[31m[Connection closed]\\x1b[0m\\r\\n');
+  };
+  ws.onerror = function() {
+    term.write('\\r\\n\\x1b[31m[Connection error]\\x1b[0m\\r\\n');
+  };
+
+  term.onData(function(data) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  });
+
+  term.onResize(function(size) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+    }
+  });
+}
+
+function closeSshModal() {
+  el('sshModal').style.display = 'none';
+  if (sshWs) { try { sshWs.close(); } catch(e){} sshWs = null; }
+  if (sshTerm) { try { sshTerm.dispose(); } catch(e){} sshTerm = null; }
+  sshFitAddon = null;
+}
+
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
   if (TOKEN) {
@@ -457,6 +565,17 @@ window.addEventListener('DOMContentLoaded', () => {
     loadAll();
     refreshTimer = setInterval(loadJobs, 30000);
   }
+  // SSH modal: resize terminal on window resize
+  window.addEventListener('resize', () => {
+    if (sshResizeTimer) clearTimeout(sshResizeTimer);
+    sshResizeTimer = setTimeout(() => {
+      if (sshFitAddon && sshTerm) sshFitAddon.fit();
+    }, 300);
+  });
+  // Close SSH modal on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el('sshModal').style.display !== 'none') closeSshModal();
+  });
 });
 </script>
 </body>
