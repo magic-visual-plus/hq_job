@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HQ Job Manager</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #fff; --border: #e2e8f0; --primary: #3b82f6;
+    --primary-hover: #2563eb; --danger: #ef4444; --success: #22c55e;
+    --text: #1e293b; --text-light: #64748b; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.5;
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .container { width: 440px; max-width: 95vw; }
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: var(--radius); padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text-light); margin-bottom: 20px; }
+  label { font-size: 13px; font-weight: 500; color: var(--text-light); display: block; margin-bottom: 3px; }
+  input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+          border-radius: var(--radius); font-size: 13px; background: #fff; margin-bottom: 12px; }
+  .required::after { content: ' *'; color: var(--danger); }
+  .btn { padding: 8px 20px; border: none; border-radius: var(--radius); cursor: pointer;
+         font-size: 14px; font-weight: 500; width: 100%; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .error { color: var(--danger); font-size: 12px; margin-bottom: 8px; display: none; }
+  .loading-view { text-align: center; padding: 40px 0; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border);
+             border-top-color: var(--primary); border-radius: 50%;
+             animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status-msg { font-size: 14px; color: var(--text-light); }
+  .fail-msg { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Loading View -->
+<div class="container" id="loadingView">
+  <div class="card loading-view">
+    <div class="spinner"></div>
+    <div class="status-msg" id="statusMsg">Starting backend...</div>
+    <div class="fail-msg" id="failMsg"></div>
+  </div>
+</div>
+
+<!-- Settings View -->
+<div class="container hidden" id="settingsView">
+  <div class="card">
+    <h1>HQ Job Manager</h1>
+    <div class="subtitle">Configure your settings to get started</div>
+    <div class="error" id="formError"></div>
+    <form id="settingsForm">
+      <label class="required">AutoDL Token</label>
+      <input type="password" id="autodlToken" placeholder="Your AutoDL API token" required>
+      <label class="required">API Token</label>
+      <input type="text" id="apiToken" placeholder="Access token for this app" required>
+      <label>COS Prefix</label>
+      <input type="text" id="cosPrefix" placeholder="cos://autodl" value="cos://autodl">
+      <label>Server Port</label>
+      <input type="number" id="serverPort" placeholder="9090" value="9090" min="1024" max="65535">
+      <button type="submit" class="btn btn-primary" id="saveBtn">Save & Start</button>
+    </form>
+  </div>
+</div>
+
+<script>
+function waitForTauri(maxWait) {
+  return new Promise((resolve, reject) => {
+    if (window.__TAURI__) return resolve(window.__TAURI__);
+    let elapsed = 0;
+    const iv = setInterval(() => {
+      elapsed += 50;
+      if (window.__TAURI__) { clearInterval(iv); resolve(window.__TAURI__); }
+      else if (elapsed >= maxWait) { clearInterval(iv); reject(new Error('Tauri API not available after ' + maxWait + 'ms')); }
+    }, 50);
+  });
+}
+
+async function init() {
+  const statusMsg = document.getElementById('statusMsg');
+  const failMsg = document.getElementById('failMsg');
+
+  try {
+    const tauri = await waitForTauri(3000);
+    const { invoke } = tauri.core;
+    const { listen } = tauri.event;
+
+    // Make invoke globally available
+    window._invoke = invoke;
+
+    // Listen for backend events
+    listen('backend-ready', (event) => {
+      window.location.href = event.payload;
+    });
+    listen('backend-failed', (event) => {
+      failMsg.textContent = event.payload;
+      failMsg.style.display = 'block';
+      statusMsg.textContent = 'Failed to start backend';
+    });
+
+    // Check if config exists
+    const config = await invoke('get_config');
+    if (config) {
+      showLoading();
+    } else {
+      showSettings();
+    }
+
+    // Bind form submit via JS (inline onsubmit blocked by CSP)
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      handleSave(invoke);
+    });
+  } catch (err) {
+    statusMsg.textContent = 'Initialization error';
+    failMsg.textContent = String(err);
+    failMsg.style.display = 'block';
+  }
+}
+
+function showLoading() {
+  document.getElementById('loadingView').classList.remove('hidden');
+  document.getElementById('settingsView').classList.add('hidden');
+}
+
+function showSettings() {
+  document.getElementById('loadingView').classList.add('hidden');
+  document.getElementById('settingsView').classList.remove('hidden');
+}
+
+async function handleSave(invoke) {
+  const errEl = document.getElementById('formError');
+  errEl.style.display = 'none';
+
+  const autodlToken = document.getElementById('autodlToken').value.trim();
+  const apiToken = document.getElementById('apiToken').value.trim();
+  const cosPrefix = document.getElementById('cosPrefix').value.trim() || 'cos://autodl';
+  const serverPort = parseInt(document.getElementById('serverPort').value) || 9090;
+
+  if (!autodlToken || !apiToken) {
+    errEl.textContent = 'AutoDL Token and API Token are required.';
+    errEl.style.display = 'block';
+    return false;
+  }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    await invoke('save_config_cmd', {
+      config: {
+        autodl_token: autodlToken,
+        api_token: apiToken,
+        cos_prefix: cosPrefix,
+        server_port: serverPort,
+      }
+    });
+    showLoading();
+    document.getElementById('statusMsg').textContent = 'Starting backend...';
+    try {
+      await invoke('restart_backend');
+    } catch (restartErr) {
+      document.getElementById('failMsg').textContent = 'Backend start error: ' + restartErr;
+      document.getElementById('failMsg').style.display = 'block';
+      document.getElementById('statusMsg').textContent = 'Failed to start';
+    }
+  } catch (err) {
+    errEl.textContent = 'Save error: ' + err;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Save & Start';
+  }
+  return false;
+}
+
+init();
+</script>
+</body>
+</html>

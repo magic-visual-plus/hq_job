@@ -60,7 +60,7 @@ def get_engine() -> JobEngineAutodl:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     if not AUTODL_TOKEN:
-        raise RuntimeError("AUTODL_TOKEN environment variable is required")
+        logger.warning("AUTODL_TOKEN not set, AutoDL features will be unavailable")
     if not API_TOKEN:
         logger.warning("API_TOKEN not set, all authenticated endpoints will return 500")
     application.state.engine = JobEngineAutodl(token=AUTODL_TOKEN)

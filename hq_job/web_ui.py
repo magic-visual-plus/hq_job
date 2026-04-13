@@ -149,6 +149,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="status-dot" id="statusDot"></div>
     <input type="text" id="tokenInput" placeholder="API Token">
     <button class="btn btn-primary btn-sm" onclick="connect()">Connect</button>
+    <button class="btn btn-outline btn-sm" id="settingsBtn" style="display:none" onclick="openSettings()">Settings</button>
   </div>
 </div>
 
@@ -711,8 +712,19 @@ function closeSshModal() {
   sshCurrentUuid = null;
 }
 
+// --- Tauri integration ---
+function openSettings() {
+  if (window.__TAURI__) {
+    window.__TAURI__.core.invoke('open_settings');
+  }
+}
+
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
+  // Show settings button when running inside Tauri
+  if (window.__TAURI__) {
+    el('settingsBtn').style.display = '';
+  }
   if (TOKEN) {
     el('tokenInput').value = TOKEN;
     el('statusDot').classList.add('connected');

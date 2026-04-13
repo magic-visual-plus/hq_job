@@ -1,0 +1,18 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for HQ Job Desktop",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "shell:allow-open",
+    "shell:allow-stdin-write",
+    "fs:default",
+    "fs:allow-appconfig-read-recursive",
+    "fs:allow-appconfig-write-recursive",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
+    "fs:create-app-specific-dirs"
+  ]
+}
