@@ -124,6 +124,34 @@ HTML_PAGE = """<!DOCTYPE html>
   .btn-monitor { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
   .btn-monitor:hover, .btn-monitor.active { background: var(--primary); color: #fff; }
 
+  /* Info button */
+  .btn-info { background: transparent; border: 1px solid var(--warning); color: var(--warning); }
+  .btn-info:hover { background: var(--warning); color: #fff; }
+
+  /* Credentials modal */
+  .cred-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200;
+                        display: flex; align-items: center; justify-content: center; }
+  .cred-modal { background: var(--card); border-radius: var(--radius); width: 440px; max-width: 92vw;
+                box-shadow: 0 12px 40px rgba(0,0,0,0.25); overflow: hidden; }
+  .cred-modal-header { display: flex; justify-content: space-between; align-items: center;
+                       padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 600; }
+  .cred-modal-header button { background: none; border: none; font-size: 20px; cursor: pointer;
+                              color: var(--gray); line-height: 1; }
+  .cred-modal-header button:hover { color: var(--text); }
+  .cred-modal-body { padding: 16px; }
+  .cred-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0;
+              border-bottom: 1px solid var(--border); font-size: 13px; }
+  .cred-row:last-child { border-bottom: none; }
+  .cred-label { font-weight: 600; color: var(--text-light); min-width: 70px; }
+  .cred-value { font-family: monospace; color: var(--text); word-break: break-all; flex: 1; margin: 0 10px; }
+  .cred-copy { padding: 2px 8px; font-size: 11px; cursor: pointer; background: var(--bg);
+               border: 1px solid var(--border); border-radius: 4px; color: var(--text-light); white-space: nowrap; }
+  .cred-copy:hover { background: var(--border); }
+  .cred-ssh-cmd { margin-top: 12px; padding: 10px; background: var(--bg); border-radius: var(--radius);
+                  font-family: monospace; font-size: 12px; color: var(--text); word-break: break-all;
+                  display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .cred-ssh-cmd span { flex: 1; }
+
   /* Monitor expanded row */
   .monitor-row td { background: #f8fafc !important; padding: 12px 16px; }
   .monitor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
@@ -266,6 +294,18 @@ HTML_PAGE = """<!DOCTYPE html>
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="credModal" class="cred-modal-overlay" style="display:none">
+  <div class="cred-modal">
+    <div class="cred-modal-header">
+      <span id="credModalTitle">Connection Info</span>
+      <button onclick="closeCredModal()">&times;</button>
+    </div>
+    <div class="cred-modal-body" id="credModalBody">
+      <div class="loading">Loading...</div>
     </div>
   </div>
 </div>
@@ -476,6 +516,7 @@ async function loadJobs() {
         + '<td>' + (j.gpu_name_set || []).join(', ') + '</td>'
         + '<td>' + t + '</td>'
         + '<td class="op-btns">'
+        + (isRunning ? '<button class="btn btn-sm btn-info" onclick="showCredentials(\\'' + j.uuid + '\\',\\'' + j.name + '\\')">Info</button>' : '')
         + (isRunning ? '<button class="btn btn-sm btn-ssh" onclick="openSsh(\\'' + j.uuid + '\\',\\'' + j.name + '\\')">SSH</button>' : '')
         + (isRunning ? '<button id="monitor-btn-' + j.uuid + '" class="btn btn-sm btn-monitor' + monActive + '" onclick="toggleMonitor(\\'' + j.uuid + '\\')">Monitor</button>' : '')
         + '<button class="btn btn-outline btn-sm" onclick="stopJob(\\'' + j.uuid + '\\')">Stop</button>'
@@ -622,6 +663,39 @@ function renderMonitorData(uuid, d) {
   panel.innerHTML = h;
 }
 
+// --- Credentials Info ---
+async function showCredentials(uuid, name) {
+  el('credModal').style.display = 'flex';
+  el('credModalTitle').textContent = 'Connection: ' + name;
+  el('credModalBody').innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    var r = await api('GET', '/api/v1/jobs/' + uuid + '/ssh');
+    var d = r.data || {};
+    var sshCmd = 'ssh -p ' + d.port + ' ' + d.username + '@' + d.host;
+    var html = '';
+    html += '<div class="cred-row"><span class="cred-label">Host</span><span class="cred-value">' + (d.host || '') + '</span><button class="cred-copy" onclick="copyText(\\\'' + (d.host || '') + '\\\')">Copy</button></div>';
+    html += '<div class="cred-row"><span class="cred-label">Port</span><span class="cred-value">' + (d.port || '') + '</span><button class="cred-copy" onclick="copyText(\\\'' + (d.port || '') + '\\\')">Copy</button></div>';
+    html += '<div class="cred-row"><span class="cred-label">Username</span><span class="cred-value">' + (d.username || '') + '</span><button class="cred-copy" onclick="copyText(\\\'' + (d.username || '') + '\\\')">Copy</button></div>';
+    html += '<div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">' + (d.password || '') + '</span><button class="cred-copy" onclick="copyText(\\\'' + (d.password || '') + '\\\')">Copy</button></div>';
+    html += '<div class="cred-ssh-cmd"><span>' + sshCmd + '</span><button class="cred-copy" onclick="copyText(\\\'' + sshCmd + '\\\')">Copy</button></div>';
+    el('credModalBody').innerHTML = html;
+  } catch (e) {
+    el('credModalBody').innerHTML = '<div class="loading" style="color:var(--danger)">Error: ' + e.message + '</div>';
+  }
+}
+
+function closeCredModal() {
+  el('credModal').style.display = 'none';
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(function() {
+    toast('Copied', 'success');
+  }).catch(function() {
+    toast('Copy failed', 'error');
+  });
+}
+
 // --- SSH Terminal ---
 let sshTerm = null;
 let sshWs = null;
@@ -738,9 +812,12 @@ window.addEventListener('DOMContentLoaded', () => {
       if (sshFitAddon && sshTerm) sshFitAddon.fit();
     }, 300);
   });
-  // Close SSH modal on Escape
+  // Close modals on Escape
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && el('sshModal').style.display !== 'none') closeSshModal();
+    if (e.key === 'Escape') {
+      if (el('sshModal').style.display !== 'none') closeSshModal();
+      else if (el('credModal').style.display !== 'none') closeCredModal();
+    }
   });
 });
 </script>

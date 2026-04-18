@@ -444,6 +444,7 @@ async def get_ssh_info(
         "host": host,
         "port": port,
         "username": user,
+        "password": container.info.root_password,
     })
 
 
