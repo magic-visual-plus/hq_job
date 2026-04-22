@@ -360,9 +360,9 @@ class AutodlClient(object):
 
     def create_replicaset_deployment(self, name: str, image_uuid: str, replica_num: int = 2,
                                    gpu_name_set: Optional[List[str]] = None, gpu_num: int = 1,
-                                   cuda_v_from: int = 113, cuda_v_to: int = 128,
-                                   cpu_num_from: int = 1, cpu_num_to: int = 100,
-                                   memory_size_from: int = 1, memory_size_to: int = 256,
+                                   cuda_v_from: int = 113, cuda_v_to: int = 1000,
+                                   cpu_num_from: int = 1, cpu_num_to: int = 1000,
+                                   memory_size_from: int = 1, memory_size_to: int = 1000,
                                    dc_list: Optional[List[str]] = None, cmd: str = "sleep 100",
                                    price_from: int = 10, price_to: int = 9000,
                                    reuse_container: bool = True, env_vars: Optional[Dict[str, str]] = None) -> str:
@@ -390,9 +390,9 @@ class AutodlClient(object):
 
     def create_job_deployment(self, name: str, image_uuid: str, replica_num: int = 1,
                             parallelism_num: int = 1, gpu_name_set: Optional[List[str]] = None,
-                            gpu_num: int = 1, cuda_v_from: int = 113, cuda_v_to: int = 130,
-                            cpu_num_from: int = 1, cpu_num_to: int = 100,
-                            memory_size_from: int = 1, memory_size_to: int = 256,
+                            gpu_num: int = 1, cuda_v_from: int = 113, cuda_v_to: int = 1000,
+                            cpu_num_from: int = 1, cpu_num_to: int = 1000,
+                            memory_size_from: int = 1, memory_size_to: int = 1000,
                             dc_list: Optional[List[str]] = None, cmd: str = "sleep 10",
                             price_from: int = 10, price_to: int = 9000,
                             reuse_container: bool = False, env_vars: Optional[Dict[str, str]] = None) -> str:
