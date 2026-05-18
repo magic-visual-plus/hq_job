@@ -246,6 +246,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <option value="L20">L20</option>
             <option value="L40">L40</option>
             <option value="H20-NVLink">H20-NVLink</option>
+            <option value="H800">H800</option>
             <option value="A800-80GB-NVLink">A800-80GB-NVLink</option>
           </select>
         </div>
