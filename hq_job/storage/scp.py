@@ -3,6 +3,8 @@
 import os
 from .base import StorageBase
 import fabric
+import time
+from typing import List
 
 
 class SCPStorage(StorageBase):
@@ -14,7 +16,7 @@ class SCPStorage(StorageBase):
         self.port = port
         self.key_file = key_file
 
-    def download_file(self, remote_path: str, local_path: str, ignores: str = ""):
+    def download_file(self, remote_path: str, local_path: str, ignores: List[str]):
         if remote_path.endswith("/"):
             # recursive download
             connect_kwargs = dict()
@@ -32,7 +34,7 @@ class SCPStorage(StorageBase):
                 tmp_file = f"/tmp/{basename}.tar.gz"
                 pack_command = f"rm -rf {tmp_file} && tar -czf {tmp_file} -C {remote_path}"
                 if len(ignores) > 0:
-                    pack_command += f" --exclude='{ignores}'"
+                    pack_command += " ".join([f" --exclude='{ignore}'" for ignore in ignores])
                     pass
                 pack_command += " ."
                 conn.run(pack_command)
@@ -41,6 +43,7 @@ class SCPStorage(StorageBase):
                         # remove old tmp file
                         os.remove(tmp_file)
                         pass
+                    time.sleep(1)
                     conn.get(remote=tmp_file, local=tmp_file)
                     target_path = os.path.join(local_path, basename)
                     if os.path.exists(target_path):

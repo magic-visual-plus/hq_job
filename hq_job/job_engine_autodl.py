@@ -121,7 +121,7 @@ class JobEngineAutodl(JobEngine):
         return user, host, port
 
 
-    def download_job_output_from_container(self, job_uuid: str, job_desc: JobDescription, local_path: str, ignores=""):
+    def download_job_output_from_container(self, job_uuid: str, job_desc: JobDescription, local_path: str, ignores=[]):
         # download output path to local path
         container = self.get_job_conainter(job_uuid)
         if container is None:

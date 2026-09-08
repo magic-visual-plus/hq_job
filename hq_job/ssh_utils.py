@@ -3,7 +3,7 @@ from .storage.scp import SCPStorage
 import fabric
 
 
-def download_file(remote_path: str, local_path: str, host: str, username: str, password=None, port=22, key_file=None, ignores=""):
+def download_file(remote_path: str, local_path: str, host: str, username: str, password=None, port=22, key_file=None, ignores=[]):
     storage = SCPStorage(host=host, username=username, password=password, port=port, key_file=key_file)
     storage.download_file(remote_path, local_path, ignores=ignores)
     pass
